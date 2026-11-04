@@ -1,0 +1,120 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PMON.ViewModels"
+        x:Class="PMON.Views.RulesWindow"
+        x:DataType="vm:RulesViewModel"
+        Title="Tracking rules"
+        Icon="/Assets/icon.png"
+        Width="660" Height="700"
+        MinWidth="520" MinHeight="560"
+        WindowStartupLocation="CenterOwner">
+
+  <Window.Styles>
+    <Style Selector="Border.badge">
+      <Setter Property="Background" Value="#112B2A" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.badge > TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TealBrush}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Border.badge.exclude">
+      <Setter Property="Background" Value="#2A1219" />
+    </Style>
+    <Style Selector="Border.badge.exclude > TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+    </Style>
+    <Style Selector="Grid.off">
+      <Setter Property="Opacity" Value="0.5" />
+    </Style>
+  </Window.Styles>
+
+  <Border Padding="24,20" Background="{StaticResource PanelBrush}">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="10">
+
+      <StackPanel Grid.Row="0" Spacing="4">
+        <TextBlock Text="Tracking rules" FontSize="18" FontWeight="Bold" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="A process is tracked when it matches any Track rule and no Exclude rule. Rules are re-checked on every sample, so processes that start later are picked up automatically." />
+      </StackPanel>
+
+      <Border Grid.Row="1" Classes="card" Padding="14">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <AutoCompleteBox Grid.Column="0" Text="{Binding NewPattern}" ItemsSource="{Binding Suggestions}"
+                             FilterMode="Contains" MinimumPrefixLength="1" PlaceholderText="Start typing a process name, e.g. edge">
+              <AutoCompleteBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding AddTrackCommand}" />
+              </AutoCompleteBox.KeyBindings>
+            </AutoCompleteBox>
+            <Button Grid.Column="1" Classes="primary" Content="Track" Command="{Binding AddTrackCommand}" />
+            <Button Grid.Column="2" Classes="ghost" Content="Exclude" Command="{Binding AddExcludeCommand}" />
+          </Grid>
+          <TextBlock Text="{Binding Error}" Foreground="{StaticResource DangerBrush}" FontSize="12"
+                     IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Text="{Binding Preview}" Foreground="{StaticResource TealBrush}" FontSize="12" TextWrapping="Wrap"
+                     IsVisible="{Binding Preview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap"
+                     Text="Wildcards * and ? match the process name, with or without .exe. Prefix with re: for a regular expression." />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Grid.Row="2" Text="RULES" Classes="section" Margin="0,8,0,0" />
+
+      <Grid Grid.Row="3">
+        <TextBlock Classes="muted" TextWrapping="Wrap" IsVisible="{Binding !HasItems}"
+                   Text="No rules yet. Add a pattern above to start tracking processes." />
+        <ScrollViewer IsVisible="{Binding HasItems}" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,10,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RuleViewModel">
+                <Border Classes="card" Padding="12,8" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="12" Classes.off="{Binding !IsEnabled}">
+                    <CheckBox Grid.Column="0" IsChecked="{Binding IsEnabled}" MinWidth="0" MinHeight="0" Padding="0" />
+                    <Border Grid.Column="1" Classes="badge" Classes.exclude="{Binding IsExclude}">
+                      <TextBlock Text="{Binding Kind}" />
+                    </Border>
+                    <TextBlock Grid.Column="2" Text="{Binding Pattern}" FontFamily="Consolas,Cascadia Mono,monospace" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Text="{Binding MatchText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    <Button Grid.Column="4" Classes="icon" Content="✕" FontSize="11"
+                            Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+
+      <TextBlock Grid.Row="4" Text="TRACKED NOW" Classes="section" Margin="0,8,0,0" />
+
+      <Grid Grid.Row="5" MinHeight="40" MaxHeight="150">
+        <TextBlock Classes="muted" TextWrapping="Wrap" IsVisible="{Binding !HasTrackedNow}"
+                   Text="No running process is tracked." />
+        <ScrollViewer IsVisible="{Binding HasTrackedNow}" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding TrackedNow}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border Classes="chip" Padding="10,3">
+                  <TextBlock Text="{Binding}" FontSize="12" />
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+
+      <Button Grid.Row="6" Classes="primary" Content="Close" HorizontalAlignment="Right" MinWidth="110"
+              HorizontalContentAlignment="Center" Click="OnClose" />
+    </Grid>
+  </Border>
+</Window>

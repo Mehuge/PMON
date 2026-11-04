@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:debug",
+      "type": "shell",
+      "command": "dotnet build PMON.csproj -c Debug",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build:release",
+      "type": "shell",
+      "command": "dotnet publish PMON.csproj -c Release -o dist",
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "generate:assets",
+      "type": "shell",
+      "command": "npm run assets",
+      "problemMatcher": []
+    }
+  ]
+}

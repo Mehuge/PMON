@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PMON.Views.AboutWindow"
+        Title="About PMON"
+        Icon="/Assets/icon.png"
+        Width="520" Height="440"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+  <Border Padding="32,28" Background="{StaticResource PanelBrush}">
+    <StackPanel Spacing="14" HorizontalAlignment="Center">
+      <Image Source="/Assets/logo.png" Width="400" Stretch="Uniform" />
+
+      <TextBlock x:Name="VersionText" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TealBrush}" />
+
+      <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="400" Classes="muted"
+                 Text="Tracks the CPU, memory, disk, handle and window activity of chosen processes, records it to CSV, and lets you scrub back through a recording to see what happened during a slowdown." />
+
+      <Border Classes="card" Padding="18,12">
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Author" Classes="muted" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="Mehuge" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Built with" Classes="muted" />
+          <TextBlock Grid.Row="1" Grid.Column="1" Text="Claude Sonnet 5.5 (GitHub Copilot)" />
+        </Grid>
+      </Border>
+
+      <Button Classes="primary" Content="Close" HorizontalAlignment="Center" MinWidth="110" HorizontalContentAlignment="Center" Click="OnClose" />
+    </StackPanel>
+  </Border>
+</Window>

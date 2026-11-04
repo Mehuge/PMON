@@ -1,0 +1,16 @@
+{
+  "name": "pmon",
+  "version": "1.0.0",
+  "description": "PMON - process activity monitor and recorder",
+  "author": "Mehuge",
+  "private": true,
+  "scripts": {
+    "assets": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/generate-assets.ps1",
+    "restore": "dotnet restore PMON.csproj",
+    "build:debug": "dotnet build PMON.csproj -c Debug",
+    "build:release": "dotnet publish PMON.csproj -c Release -o dist",
+    "start": "dotnet run --project PMON.csproj -c Debug",
+    "start:release": "dist\\PMON.exe",
+    "clean": "dotnet clean PMON.csproj && powershell -NoProfile -Command \"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue dist, bin, obj\""
+  }
+}

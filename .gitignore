@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+.vs/
+*.user
+*.suo
+node_modules/
+.idea/
+*.log
+*.csv
