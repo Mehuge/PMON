@@ -19,7 +19,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly TimeSpan LiveRetention = TimeSpan.FromHours(6);
     private const int ProcessTabIndex = 1;
-    private const double TopListLineHeight = 20;
     private static readonly TimeSpan MinimumRateWindow = TimeSpan.FromSeconds(30);
 
     public static readonly IReadOnlyList<int> TopCountOptions = [1, 3, 5, 10];
@@ -88,17 +87,34 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private bool _captureTop;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TopListHeight))]
     private int _selectedTopCount;
 
     [ObservableProperty]
-    private string _topCpuText = string.Empty;
+    private double _cpuValue;
 
     [ObservableProperty]
-    private string _topMemoryText = string.Empty;
+    private double _memoryValue;
 
     [ObservableProperty]
-    private string _topDiskText = string.Empty;
+    private double _commitValue;
+
+    [ObservableProperty]
+    private double _diskValue;
+
+    [ObservableProperty]
+    private string _commitText = "—";
+
+    [ObservableProperty]
+    private string _recordingElapsed = "00:00:00";
+
+    [ObservableProperty]
+    private string _recordingRows = "0";
+
+    [ObservableProperty]
+    private string _recordingSize = "0 MB";
+
+    [ObservableProperty]
+    private string _freeSpaceText = string.Empty;
 
     public MainViewModel(AppSettings settings)
     {
@@ -113,6 +129,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _selectedTopCount = TopCountOptions.Contains(settings.TopCount) ? settings.TopCount : 3;
         _pendingSelection = settings.SelectedProcessName;
         Viewport.Span = _selectedSpan.Span;
+        _freeSpaceText = DescribeFreeSpace(0);
 
         Rules = new RulesViewModel(settings.Rules);
         Rules.Changed += OnRulesChanged;
@@ -154,10 +171,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public IReadOnlyList<ChartViewModel> DetailCharts { get; }
     public IReadOnlyList<ChartViewModel> TopCharts { get; }
 
-    public bool HasSelection => SelectedProcess is not null;
+    public IReadOnlyList<ConsumerListViewModel> Consumers { get; } =
+    [
+        new("CPU", ValueKind.Percent, p => p.CpuPercent),
+        new("Memory", ValueKind.Megabytes, p => p.WorkingSetMb),
+        new("Disk", ValueKind.BytesPerSecond, p => p.IoReadBytesPerSec + p.IoWriteBytesPerSec),
+    ];
 
-    /// <summary>Room for the longest possible top list, so the panel does not resize as the cursor moves.</summary>
-    public double TopListHeight => SelectedTopCount * TopListLineHeight;
+    public bool HasSelection => SelectedProcess is not null;
 
     public bool IsLive => Viewport.IsLive;
     public bool CanGoLive => Viewport.IsLive && !Viewport.FollowLive;
@@ -311,6 +332,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnRecordingFolderChanged(string value)
     {
         _settings.RecordingFolder = value;
+        if (!IsRecording)
+            FreeSpaceText = DescribeFreeSpace(0);
     }
 
     partial void OnAutoRecordChanged(bool value)
@@ -364,6 +387,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var path = Path.Combine(RecordingFolder, $"pmon-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
             Volatile.Write(ref _recorder, new CsvRecorder(path));
             IsRecording = true;
+            RecordingStatus = $"Recording to {Path.GetFileName(path)}";
+            UpdateRecordingStats(_recorder!);
             Message = string.Empty;
             SaveSettings();
         }
@@ -381,6 +406,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         RecordingStatus = recorder is null
             ? "Not recording"
             : $"Saved {Path.GetFileName(recorder.Path)}";
+        FreeSpaceText = DescribeFreeSpace(0);
     }
 
     private void OnSnapshotReady(Snapshot snapshot)
@@ -431,8 +457,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                var size = File.Exists(recorder.Path) ? new FileInfo(recorder.Path).Length : 0;
-                RecordingStatus = DescribeRecording(DateTime.Now - recorder.Started, recorder.Rows, size / 1048576.0);
+                UpdateRecordingStats(recorder);
             }
         }
 
@@ -444,13 +469,53 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateReadouts();
     }
 
-    private static string DescribeRecording(TimeSpan elapsed, long rows, double sizeMb)
+    private void UpdateRecordingStats(CsvRecorder recorder)
     {
-        var status = $"{elapsed:hh\\:mm\\:ss}  ·  {rows:N0} rows  ·  {ValueFormatter.Format(ValueKind.Megabytes, sizeMb)}";
-        if (elapsed < MinimumRateWindow)
-            return status;
+        var elapsed = DateTime.Now - recorder.Started;
+        var sizeMb = (File.Exists(recorder.Path) ? new FileInfo(recorder.Path).Length : 0) / 1048576.0;
 
-        return $"{status}  ·  ~{ValueFormatter.Format(ValueKind.Megabytes, sizeMb / elapsed.TotalHours)}/h";
+        RecordingElapsed = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+        RecordingRows = recorder.Rows.ToString("N0");
+        RecordingSize = ValueFormatter.Format(ValueKind.Megabytes, sizeMb);
+        FreeSpaceText = DescribeFreeSpace(elapsed < MinimumRateWindow ? 0 : sizeMb / elapsed.TotalSeconds);
+    }
+
+    private string DescribeFreeSpace(double megabytesPerSecond)
+    {
+        var free = FreeSpaceMb();
+        if (free is null)
+            return string.Empty;
+
+        var text = $"{ValueFormatter.Format(ValueKind.Megabytes, free.Value)} free";
+        if (megabytesPerSecond <= 0)
+            return text;
+
+        return $"{text}  ·  room for ~{FormatDuration(TimeSpan.FromSeconds(free.Value / megabytesPerSecond))}";
+    }
+
+    private double? FreeSpaceMb()
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(RecordingFolder));
+            return string.IsNullOrEmpty(root) ? null : new DriveInfo(root).AvailableFreeSpace / 1048576.0;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string FormatDuration(TimeSpan span)
+    {
+        if (span.TotalDays >= 365)
+            return "over a year";
+        if (span.TotalDays >= 2)
+            return $"{span.TotalDays:0} days";
+        if (span.TotalHours >= 1)
+            return $"{span.TotalHours:0.#} h";
+
+        return $"{Math.Max(1, span.TotalMinutes):0} min";
     }
 
     private void SyncProcessList()
@@ -582,31 +647,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _pendingSelection = null;
     }
 
-    private string DescribeTop(string reason, DateTime time, double gap, ValueKind kind, Func<ProcessSample, double> metric)
+    private void UpdateConsumers(DateTime time, double gap)
     {
-        var latest = DateTime.MinValue;
-        var entries = new List<ProcessSample>();
+        var store = Viewport.Store;
+        var latest = new Dictionary<string, ProcessSample>();
 
-        foreach (var series in Viewport.Store.HogSeries.Where(s => s.Reason == reason))
+        foreach (var series in store.Series.Concat(store.HogSeries))
         {
             var index = TimeSearch.LastAtOrBefore(series.Samples, time);
-            if (index < 0 || (time - series.Samples[index].Time).TotalSeconds > gap)
+            if (index < 0)
                 continue;
 
             var sample = series.Samples[index];
-            if (sample.Time > latest)
-            {
-                latest = sample.Time;
-                entries.Clear();
-            }
+            if ((time - sample.Time).TotalSeconds > gap)
+                continue;
 
-            if (sample.Time == latest)
-                entries.Add(sample);
+            if (!latest.TryGetValue(sample.Key, out var known) || sample.Time > known.Time)
+                latest[sample.Key] = sample;
         }
 
-        return entries.Count == 0
-            ? string.Empty
-            : string.Join('\n', entries.OrderByDescending(metric).Select(s => $"{s.Name} ({s.Pid})   {ValueFormatter.Format(kind, metric(s))}"));
+        foreach (var list in Consumers)
+            list.Show(latest.Values);
     }
 
     private void UpdateReadouts()
@@ -617,19 +678,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var group in Groups)
             group.Update(time, gap);
 
-        TopCpuText = DescribeTop(HogReason.Cpu, time, gap, ValueKind.Percent, p => p.CpuPercent);
-        TopMemoryText = DescribeTop(HogReason.Memory, time, gap, ValueKind.Megabytes, p => p.WorkingSetMb);
-        TopDiskText = DescribeTop(HogReason.Disk, time, gap, ValueKind.BytesPerSecond, p => p.IoReadBytesPerSec + p.IoWriteBytesPerSec);
+        UpdateConsumers(time, gap);
 
         var system = Viewport.Store.System;
         var index = TimeSearch.LastAtOrBefore(system, time);
         if (index < 0 || (time - system[index].Time).TotalSeconds > gap)
         {
-            CpuText = MemoryText = DiskText = "—";
+            CpuText = MemoryText = DiskText = CommitText = "—";
+            CpuValue = MemoryValue = CommitValue = DiskValue = 0;
             return;
         }
 
         var s = system[index];
+        CpuValue = s.CpuPercent;
+        MemoryValue = s.MemoryPercent;
+        CommitValue = s.CommitPercent;
+        DiskValue = s.DiskBusyPercent;
+        CommitText = $"{ValueFormatter.Format(ValueKind.Percent, s.CommitPercent)}  ·  {ValueFormatter.Format(ValueKind.Megabytes, s.CommitUsedMb)}";
         CpuText = ValueFormatter.Format(ValueKind.Percent, s.CpuPercent);
         MemoryText = $"{ValueFormatter.Format(ValueKind.Percent, s.MemoryPercent)}  ·  {ValueFormatter.Format(ValueKind.Megabytes, s.MemoryUsedMb)}";
         DiskText = $"{ValueFormatter.Format(ValueKind.Percent, s.DiskBusyPercent)}  ·  {ValueFormatter.Format(ValueKind.BytesPerSecond, s.DiskReadBytesPerSec + s.DiskWriteBytesPerSec)}";

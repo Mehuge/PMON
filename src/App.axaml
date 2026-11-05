@@ -73,6 +73,20 @@
       <Setter Property="BorderBrush" Value="#3D4A5C" />
     </Style>
 
+    <Style Selector="Button.ghost.live">
+      <Setter Property="Background" Value="#2A1219" />
+      <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+    </Style>
+
+    <Style Selector="ProgressBar.meter">
+      <Setter Property="Minimum" Value="0" />
+      <Setter Property="Maximum" Value="100" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Height" Value="6" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="#1B2430" />
+    </Style>
+
     <Style Selector="Button.record">
       <Setter Property="Background" Value="{StaticResource DangerBrush}" />
       <Setter Property="Foreground" Value="White" />

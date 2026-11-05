@@ -51,6 +51,8 @@ public partial class MainWindow : Window
         if (DataContext is not MainViewModel viewModel)
             return;
 
+        SettingsButton.Flyout?.Hide();
+
         if (_rulesWindow is not null)
         {
             _rulesWindow.Activate();
