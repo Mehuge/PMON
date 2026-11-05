@@ -26,6 +26,9 @@ public sealed class AppSettings
     /// <summary>Process names whose instances are all unticked; names are stored because PIDs change between runs.</summary>
     public List<string> HiddenProcesses { get; set; } = [];
 
+    /// <summary>Process names whose instances are charted individually rather than as one combined line.</summary>
+    public List<string> SplitProcesses { get; set; } = [];
+
     public string? SelectedProcessName { get; set; }
     public string RecordingFolder { get; set; } = DefaultRecordingFolder;
 

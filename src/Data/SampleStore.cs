@@ -11,6 +11,14 @@ public sealed class ProcessSeries(string key, string name, int pid, Color color)
     public Color Color { get; } = color;
     public bool Visible { get; set; } = true;
 
+    /// <summary>True for the combined series of every instance sharing a name.</summary>
+    public bool IsGroup { get; init; }
+
+    /// <summary>Set while this instance is represented by its group's combined series instead of being drawn itself.</summary>
+    public bool Collapsed { get; set; }
+
+    public string Label => IsGroup ? $"{Name} (all)" : $"{Name} ({Pid})";
+
     /// <summary>Set for top-consumer series: the resource (see <see cref="HogReason"/>) that put the process in the ranking.</summary>
     public string? Reason { get; init; }
     public List<ProcessSample> Samples { get; } = [];
@@ -28,9 +36,13 @@ public sealed class SampleStore
 
     private readonly Dictionary<string, ProcessSeries> _byKey = new();
     private readonly Dictionary<string, ProcessSeries> _hogByKey = new();
+    private readonly Dictionary<string, ProcessSeries> _groupByKey = new(StringComparer.OrdinalIgnoreCase);
 
     public List<SystemSample> System { get; } = [];
     public List<ProcessSeries> Series { get; } = [];
+
+    /// <summary>One series per process name, summing every instance sampled at the same moment.</summary>
+    public List<ProcessSeries> Groups { get; } = [];
 
     /// <summary>Untracked processes that were top CPU/memory/disk users, one series per (reason, process).</summary>
     public List<ProcessSeries> HogSeries { get; } = [];
@@ -67,7 +79,30 @@ public sealed class SampleStore
         }
 
         series.Samples.Add(sample);
+        AddToGroup(sample);
         Extend(sample.Time);
+    }
+
+    /// <summary>The combined series for a process name, created on first use.</summary>
+    public ProcessSeries GroupSeries(string name)
+    {
+        var key = $"{name}:*";
+        if (_groupByKey.TryGetValue(key, out var series))
+            return series;
+
+        series = new ProcessSeries(key, name, 0, Palette[Groups.Count % Palette.Length]) { IsGroup = true, Visible = false };
+        _groupByKey[key] = series;
+        Groups.Add(series);
+        return series;
+    }
+
+    private void AddToGroup(ProcessSample sample)
+    {
+        var samples = GroupSeries(sample.Name).Samples;
+        if (samples.Count > 0 && samples[^1].Time == sample.Time)
+            samples[^1] = samples[^1].Plus(sample);
+        else
+            samples.Add(sample with { Pid = 0 });
     }
 
     /// <summary>Records a top-consumer sample for a process that is not matched by any tracked pattern.</summary>
@@ -93,6 +128,7 @@ public sealed class SampleStore
             System.RemoveRange(0, systemCount);
 
         Trim(Series, _byKey, cutoff);
+        Trim(Groups, _groupByKey, cutoff);
         Trim(HogSeries, _hogByKey, cutoff);
 
         Start = System.Count > 0 ? System[0].Time : cutoff;

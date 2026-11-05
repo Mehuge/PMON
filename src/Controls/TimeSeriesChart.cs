@@ -87,7 +87,7 @@ public sealed class TimeSeriesChart : ViewportControl
         foreach (var spec in model.SystemSeries)
             Add(result, spec.Name, spec.Color, new PointSource<SystemSample>(store.System, spec.Selector), start, end);
 
-        if (model.ProcessMetrics.Count > 0 && store.Series.FirstOrDefault(p => p.Key == selectedKey) is { } subject)
+        if (model.ProcessMetrics.Count > 0 && store.Series.Concat(store.Groups).FirstOrDefault(p => p.Key == selectedKey) is { } subject)
         {
             foreach (var metric in model.ProcessMetrics)
                 Add(result, metric.Name, metric.Color, new PointSource<ProcessSample>(subject.Samples, metric.Selector), start, end);
@@ -96,11 +96,11 @@ public sealed class TimeSeriesChart : ViewportControl
         if (model.ProcessSelector is { } selector)
         {
             var source = model.HogReason is null
-                ? store.Series.Where(p => p.Visible)
+                ? store.Series.Concat(store.Groups).Where(p => p.Visible && !p.Collapsed)
                 : store.HogSeries.Where(p => p.Reason == model.HogReason);
 
             foreach (var process in source)
-                Add(result, $"{process.Name} ({process.Pid})", process.Color, new PointSource<ProcessSample>(process.Samples, selector), start, end);
+                Add(result, process.Label, process.Color, new PointSource<ProcessSample>(process.Samples, selector), start, end);
         }
 
         return result;

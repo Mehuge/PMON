@@ -46,6 +46,9 @@ public sealed partial class ProcessItemViewModel : ObservableObject
     public int Pid => _series.Pid;
     public IBrush Brush { get; }
 
+    public bool IsGroup => _series.IsGroup;
+    public string PidText => IsGroup ? "All instances" : $"PID {Pid}";
+
     /// <summary>The sample at the current cursor time, or null when the process was not running then.</summary>
     public ProcessSample? Sample { get; private set; }
 
@@ -65,6 +68,20 @@ public sealed partial class ProcessItemViewModel : ObservableObject
 
     [RelayCommand]
     public void Select() => _select(this);
+
+    /// <summary>True while this instance is drawn only as part of its group's combined series.</summary>
+    public bool Collapsed
+    {
+        get => _series.Collapsed;
+        set
+        {
+            if (_series.Collapsed == value)
+                return;
+
+            _series.Collapsed = value;
+            _viewport.Invalidate();
+        }
+    }
 
     public void Update(DateTime time, double gapSeconds)
     {
@@ -88,7 +105,7 @@ public sealed partial class ProcessItemViewModel : ObservableObject
         Metrics = $"CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   Mem {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)}   Threads {s.Threads}";
         Activity = DescribeActivity(s);
         Details = string.Join('\n',
-            $"CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   ·   Threads {s.Threads}   ·   Handles {s.Handles:N0}   ·   GDI {s.GdiObjects:N0}   ·   USER {s.UserObjects:N0}   ·   Priority {s.BasePriority}",
+            $"{(s.Instances > 1 ? $"{s.Instances} instances (combined)   ·   " : string.Empty)}CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   ·   Threads {s.Threads}   ·   Handles {s.Handles:N0}   ·   GDI {s.GdiObjects:N0}   ·   USER {s.UserObjects:N0}   ·   Priority {s.BasePriority}",
             $"Working set {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)} (peak {ValueFormatter.Format(ValueKind.Megabytes, s.PeakWorkingSetMb)})   ·   Private {ValueFormatter.Format(ValueKind.Megabytes, s.PrivateMb)}   ·   Page file {ValueFormatter.Format(ValueKind.Megabytes, s.PagefileMb)}   ·   Virtual {ValueFormatter.Format(ValueKind.Megabytes, s.VirtualMb)}",
             $"Disk read {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoReadBytesPerSec)}   ·   write {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoWriteBytesPerSec)}   ·   {ValueFormatter.Format(ValueKind.PerSecond, s.IoOpsPerSec)} ops   ·   Page faults {ValueFormatter.Format(ValueKind.PerSecond, s.PageFaultsPerSec)}",
             s.WindowTitle.Length > 0 ? $"{DescribeActivity(s)}   ·   “{s.WindowTitle}”" : DescribeActivity(s));

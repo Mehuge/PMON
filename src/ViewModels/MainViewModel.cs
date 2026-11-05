@@ -20,6 +20,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan LiveRetention = TimeSpan.FromHours(6);
     private const int ProcessTabIndex = 1;
     private const double TopListLineHeight = 20;
+    private static readonly TimeSpan MinimumRateWindow = TimeSpan.FromSeconds(30);
 
     public static readonly IReadOnlyList<int> TopCountOptions = [1, 3, 5, 10];
 
@@ -435,7 +436,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             else
             {
                 var size = File.Exists(recorder.Path) ? new FileInfo(recorder.Path).Length : 0;
-                RecordingStatus = $"{DateTime.Now - recorder.Started:hh\\:mm\\:ss}  ·  {recorder.Rows:N0} rows  ·  {size / 1048576.0:0.0} MB";
+                RecordingStatus = DescribeRecording(DateTime.Now - recorder.Started, recorder.Rows, size / 1048576.0);
             }
         }
 
@@ -445,6 +446,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dirty = false;
         SyncProcessList();
         UpdateReadouts();
+    }
+
+    private static string DescribeRecording(TimeSpan elapsed, long rows, double sizeMb)
+    {
+        var status = $"{elapsed:hh\\:mm\\:ss}  ·  {rows:N0} rows  ·  {ValueFormatter.Format(ValueKind.Megabytes, sizeMb)}";
+        if (elapsed < MinimumRateWindow)
+            return status;
+
+        return $"{status}  ·  ~{ValueFormatter.Format(ValueKind.Megabytes, sizeMb / elapsed.TotalHours)}/h";
     }
 
     private void SyncProcessList()
@@ -493,11 +503,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void AddToGroup(ProcessItemViewModel item)
     {
-        var choice = 0;
-        while (choice < Choices.Count && CompareItems(Choices[choice], item) < 0)
-            choice++;
-
-        Choices.Insert(choice, item);
+        InsertChoice(item);
 
         var index = 0;
         while (index < Groups.Count)
@@ -506,6 +512,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (comparison == 0)
             {
                 Groups[index].Add(item);
+                SyncAggregateChoice(Groups[index]);
                 return;
             }
 
@@ -515,9 +522,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             index++;
         }
 
-        var group = new ProcessGroupViewModel(item.Name);
+        var aggregate = new ProcessItemViewModel(Viewport.Store.GroupSeries(item.Name), Viewport, SelectProcess);
+        var group = new ProcessGroupViewModel(item.Name, aggregate)
+        {
+            IsSplit = _settings.SplitProcesses.Contains(item.Name, StringComparer.OrdinalIgnoreCase),
+        };
+        group.PropertyChanged += OnGroupChanged;
         group.Add(item);
         Groups.Insert(index, group);
+    }
+
+    private void InsertChoice(ProcessItemViewModel item)
+    {
+        var choice = 0;
+        while (choice < Choices.Count && CompareItems(Choices[choice], item) < 0)
+            choice++;
+
+        Choices.Insert(choice, item);
+    }
+
+    /// <summary>Offers the combined view in the detail picker only while the group has several instances.</summary>
+    private void SyncAggregateChoice(ProcessGroupViewModel group)
+    {
+        var listed = Choices.Contains(group.Aggregate);
+        if (group.HasMany == listed)
+            return;
+
+        if (group.HasMany)
+            InsertChoice(group.Aggregate);
+        else
+            Choices.Remove(group.Aggregate);
     }
 
     private void RemoveFromGroup(ProcessItemViewModel item)
@@ -529,8 +563,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
 
         group.Remove(item);
-        if (group.Items.Count == 0)
-            Groups.Remove(group);
+        SyncAggregateChoice(group);
+        if (group.Items.Count > 0)
+            return;
+
+        group.PropertyChanged -= OnGroupChanged;
+        Groups.Remove(group);
+    }
+
+    private void OnGroupChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ProcessGroupViewModel.IsSplit) || sender is not ProcessGroupViewModel group)
+            return;
+
+        _settings.SplitProcesses.RemoveAll(n => n.Equals(group.Name, StringComparison.OrdinalIgnoreCase));
+        if (group.IsSplit)
+            _settings.SplitProcesses.Add(group.Name);
+
+        _settingsDirty = true;
     }
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)

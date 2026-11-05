@@ -3,13 +3,11 @@ using System.ComponentModel;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PMON.Data;
-using PMON.Models;
 
 namespace PMON.ViewModels;
 
 /// <summary>All instances (PIDs) of one process name, shown as a single row in the sidebar.</summary>
-public sealed partial class ProcessGroupViewModel(string name) : ObservableObject
+public sealed partial class ProcessGroupViewModel : ObservableObject
 {
     [ObservableProperty]
     private string _metrics = "—";
@@ -22,15 +20,30 @@ public sealed partial class ProcessGroupViewModel(string name) : ObservableObjec
     [NotifyPropertyChangedFor(nameof(Chevron))]
     private bool _isExpanded;
 
-    public string Name { get; } = name;
+    /// <summary>Chart every instance on its own line instead of one combined line.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Subtitle))]
+    private bool _isSplit;
+
+    public ProcessGroupViewModel(string name, ProcessItemViewModel aggregate)
+    {
+        Name = name;
+        Aggregate = aggregate;
+        aggregate.PropertyChanged += OnItemChanged;
+    }
+
+    public string Name { get; }
+
+    /// <summary>The combined view of every instance; only offered once there is more than one.</summary>
+    public ProcessItemViewModel Aggregate { get; }
     public ObservableCollection<ProcessItemViewModel> Items { get; } = [];
 
     public bool HasMany => Items.Count > 1;
     public bool ShowInstances => IsExpanded && HasMany;
     public string Chevron => IsExpanded ? "▾" : "▸";
-    public string Subtitle => Items.Count == 1 ? $"PID {Items[0].Pid}" : $"{Items.Count} instances";
-    public IBrush? Brush => Items.Count > 0 ? Items[0].Brush : null;
-    public bool IsSelected => Items.Any(i => i.IsSelected);
+    public string Subtitle => Items.Count == 1 ? $"PID {Items[0].Pid}" : $"{Items.Count} instances · {(IsSplit ? "separate" : "combined")}";
+    public IBrush? Brush => HasMany ? Aggregate.Brush : Items.Count > 0 ? Items[0].Brush : null;
+    public bool IsSelected => Aggregate.IsSelected || Items.Any(i => i.IsSelected);
 
     /// <summary>True when every instance is drawn, false when none is, null when mixed.</summary>
     public bool? IsVisible
@@ -58,6 +71,7 @@ public sealed partial class ProcessGroupViewModel(string name) : ObservableObjec
         Items.Insert(index, item);
         item.PropertyChanged += OnItemChanged;
         NotifyMembership();
+        ApplyMode();
     }
 
     public void Remove(ProcessItemViewModel item)
@@ -65,6 +79,7 @@ public sealed partial class ProcessGroupViewModel(string name) : ObservableObjec
         item.PropertyChanged -= OnItemChanged;
         Items.Remove(item);
         NotifyMembership();
+        ApplyMode();
     }
 
     public void Update(DateTime time, double gapSeconds)
@@ -79,11 +94,9 @@ public sealed partial class ProcessGroupViewModel(string name) : ObservableObjec
             return;
         }
 
-        var running = Items.Select(i => i.Sample).OfType<ProcessSample>().ToList();
-        Activity = $"{running.Count} of {Items.Count} running";
-        Metrics = running.Count == 0
-            ? "—"
-            : $"CPU {ValueFormatter.Format(ValueKind.Percent, running.Sum(s => s.CpuPercent))}   Mem {ValueFormatter.Format(ValueKind.Megabytes, running.Sum(s => s.WorkingSetMb))}   Threads {running.Sum(s => s.Threads)}";
+        Aggregate.Update(time, gapSeconds);
+        Metrics = Aggregate.Metrics;
+        Activity = Aggregate.Sample is { } sample ? $"{sample.Instances} of {Items.Count} running" : $"0 of {Items.Count} running";
     }
 
     [RelayCommand]
@@ -108,10 +121,25 @@ public sealed partial class ProcessGroupViewModel(string name) : ObservableObjec
         OnPropertyChanged(nameof(IsSelected));
     }
 
+    partial void OnIsSplitChanged(bool value) => ApplyMode();
+
+    /// <summary>Decides whether charts draw the combined line or one line per instance.</summary>
+    private void ApplyMode()
+    {
+        var combined = HasMany && !IsSplit;
+        foreach (var item in Items)
+            item.Collapsed = combined;
+
+        Aggregate.IsVisible = combined && Items.Any(i => i.IsVisible);
+    }
+
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ProcessItemViewModel.IsVisible))
+        if (e.PropertyName == nameof(ProcessItemViewModel.IsVisible) && sender != Aggregate)
+        {
             OnPropertyChanged(nameof(IsVisible));
+            ApplyMode();
+        }
 
         if (e.PropertyName == nameof(ProcessItemViewModel.IsSelected))
             OnPropertyChanged(nameof(IsSelected));

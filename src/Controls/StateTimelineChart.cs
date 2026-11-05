@@ -136,9 +136,9 @@ public sealed class StateTimelineChart : ViewportControl
     }
 
     private List<ProcessSeries> VisibleSeries(Viewport viewport) =>
-        viewport.Store.Series
+        viewport.Store.Series.Concat(viewport.Store.Groups)
             .Where(s => s.Samples.Count > 0 && s.Samples[0].Time <= viewport.ViewEnd && s.Samples[^1].Time >= viewport.ViewStart)
-            .Where(s => SelectedOnly ? s.Key == viewport.SelectedKey : s.Visible)
+            .Where(s => SelectedOnly ? s.Key == viewport.SelectedKey : s.Visible && !s.Collapsed)
             .ToList();
 
     private static void DrawLegend(DrawingContext context)
@@ -155,7 +155,7 @@ public sealed class StateTimelineChart : ViewportControl
 
     private static void DrawRowLabel(DrawingContext context, ProcessSeries series, double right, Rect band)
     {
-        var text = ChartKit.Text($"{series.Name} ({series.Pid})", 12, ChartKit.StrongTextBrush);
+        var text = ChartKit.Text(series.Label, 12, ChartKit.StrongTextBrush);
         text.MaxTextWidth = right - 30;
         text.MaxLineCount = 1;
         text.Trimming = TextTrimming.CharacterEllipsis;
@@ -225,7 +225,7 @@ public sealed class StateTimelineChart : ViewportControl
         var sample = series.Samples[index];
         var lines = new List<(Color, string)>
         {
-            (series.Color, $"{series.Name} ({series.Pid})"),
+            (series.Color, series.Label),
             (ColorOf(StateOf(sample)), States.First(s => s.State == StateOf(sample)).Label),
         };
 

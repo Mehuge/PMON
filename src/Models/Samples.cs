@@ -51,9 +51,46 @@ public sealed record ProcessSample(
     int WindowWidth,
     int WindowHeight,
     int BasePriority,
-    string WindowTitle) : ITimedSample
+    string WindowTitle,
+    int Instances = 1) : ITimedSample
 {
     public string Key => $"{Name}:{Pid}";
+
+    /// <summary>Folds another instance's sample (same moment) into this one, producing a combined group sample.</summary>
+    public ProcessSample Plus(ProcessSample other)
+    {
+        var window = WindowRank(other) > WindowRank(this) ? other : this;
+        return this with
+        {
+            Pid = 0,
+            CpuPercent = CpuPercent + other.CpuPercent,
+            Threads = Threads + other.Threads,
+            Handles = Handles + other.Handles,
+            WorkingSetMb = WorkingSetMb + other.WorkingSetMb,
+            PrivateMb = PrivateMb + other.PrivateMb,
+            PagefileMb = PagefileMb + other.PagefileMb,
+            VirtualMb = VirtualMb + other.VirtualMb,
+            PeakWorkingSetMb = PeakWorkingSetMb + other.PeakWorkingSetMb,
+            PageFaultsPerSec = PageFaultsPerSec + other.PageFaultsPerSec,
+            IoReadBytesPerSec = IoReadBytesPerSec + other.IoReadBytesPerSec,
+            IoWriteBytesPerSec = IoWriteBytesPerSec + other.IoWriteBytesPerSec,
+            IoOpsPerSec = IoOpsPerSec + other.IoOpsPerSec,
+            GdiObjects = GdiObjects + other.GdiObjects,
+            UserObjects = UserObjects + other.UserObjects,
+            Foreground = Foreground || other.Foreground,
+            Responding = Responding && other.Responding,
+            Window = window.Window,
+            WindowX = window.WindowX,
+            WindowY = window.WindowY,
+            WindowWidth = window.WindowWidth,
+            WindowHeight = window.WindowHeight,
+            WindowTitle = window.WindowTitle,
+            Instances = Instances + other.Instances,
+        };
+    }
+
+    private static int WindowRank(ProcessSample s) =>
+        (s.Foreground ? 4 : 0) + (s.Window != WindowState.None ? 2 : 0) + (s.WindowTitle.Length > 0 ? 1 : 0);
 }
 
 public static class HogReason
