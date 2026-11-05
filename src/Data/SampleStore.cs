@@ -11,13 +11,36 @@ public sealed class ProcessSeries(string key, string name, int pid, Color color)
     public Color Color { get; } = color;
     public bool Visible { get; set; } = true;
 
-    /// <summary>True for the combined series of every instance sharing a name.</summary>
+    /// <summary>True for the combined series of one application instance (a root process and its same-named descendants).</summary>
     public bool IsGroup { get; init; }
 
-    /// <summary>Set while this instance is represented by its group's combined series instead of being drawn itself.</summary>
+    /// <summary>The root PID of the instance this process belongs to; 0 when unknown (older recordings).</summary>
+    public int RootPid { get; init; }
+
+    /// <summary>Most recent window title seen for a combined series, used to tell instances apart.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Set while this process is represented by its group's combined series instead of being drawn itself.</summary>
     public bool Collapsed { get; set; }
 
-    public string Label => IsGroup ? $"{Name} (all)" : $"{Name} ({Pid})";
+    public string GroupKey => IsGroup ? Key : SampleStore.GroupKeyOf(Name, RootPid);
+
+    public string Label
+    {
+        get
+        {
+            if (!IsGroup)
+                return $"{Name} ({Pid})";
+
+            var scope = Pid > 0 ? $"{Name} ({Pid}, all)" : $"{Name} (all)";
+            if (Title.Length == 0)
+                return scope;
+
+            return Title.Length > TitleLimit ? $"{scope}  “{Title[..TitleLimit]}…”" : $"{scope}  “{Title}”";
+        }
+    }
+
+    private const int TitleLimit = 32;
 
     /// <summary>Set for top-consumer series: the resource (see <see cref="HogReason"/>) that put the process in the ranking.</summary>
     public string? Reason { get; init; }
@@ -41,7 +64,7 @@ public sealed class SampleStore
     public List<SystemSample> System { get; } = [];
     public List<ProcessSeries> Series { get; } = [];
 
-    /// <summary>One series per process name, summing every instance sampled at the same moment.</summary>
+    /// <summary>One series per application instance, summing every process of it sampled at the same moment.</summary>
     public List<ProcessSeries> Groups { get; } = [];
 
     /// <summary>Untracked processes that were top CPU/memory/disk users, one series per (reason, process).</summary>
@@ -73,36 +96,42 @@ public sealed class SampleStore
         var key = sample.Key;
         if (!_byKey.TryGetValue(key, out var series))
         {
-            series = new ProcessSeries(key, sample.Name, sample.Pid, Palette[Series.Count % Palette.Length]);
+            series = new ProcessSeries(key, sample.Name, sample.Pid, Palette[Series.Count % Palette.Length]) { RootPid = sample.RootPid };
             _byKey[key] = series;
             Series.Add(series);
         }
 
         series.Samples.Add(sample);
-        AddToGroup(sample);
+        AddToGroup(series, sample);
         Extend(sample.Time);
     }
 
-    /// <summary>The combined series for a process name, created on first use.</summary>
-    public ProcessSeries GroupSeries(string name)
+    public static string GroupKeyOf(string name, int rootPid) => rootPid > 0 ? $"{name}:#{rootPid}" : $"{name}:*";
+
+    /// <summary>The combined series for an instance, created on first use.</summary>
+    public ProcessSeries GroupSeries(string name, int rootPid)
     {
-        var key = $"{name}:*";
+        var key = GroupKeyOf(name, rootPid);
         if (_groupByKey.TryGetValue(key, out var series))
             return series;
 
-        series = new ProcessSeries(key, name, 0, Palette[Groups.Count % Palette.Length]) { IsGroup = true, Visible = false };
+        series = new ProcessSeries(key, name, rootPid, Palette[Groups.Count % Palette.Length]) { IsGroup = true, Visible = false, RootPid = rootPid };
         _groupByKey[key] = series;
         Groups.Add(series);
         return series;
     }
 
-    private void AddToGroup(ProcessSample sample)
+    private void AddToGroup(ProcessSeries member, ProcessSample sample)
     {
-        var samples = GroupSeries(sample.Name).Samples;
+        var group = GroupSeries(member.Name, member.RootPid);
+        var samples = group.Samples;
         if (samples.Count > 0 && samples[^1].Time == sample.Time)
             samples[^1] = samples[^1].Plus(sample);
         else
             samples.Add(sample with { Pid = 0 });
+
+        if (samples[^1].WindowTitle.Length > 0)
+            group.Title = samples[^1].WindowTitle;
     }
 
     /// <summary>Records a top-consumer sample for a process that is not matched by any tracked pattern.</summary>

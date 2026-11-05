@@ -1,9 +1,11 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace PMON.Monitoring;
 
 internal static partial class NativeMethods
 {
+    public const uint Th32csSnapProcess = 0x2;
     public const uint ProcessQueryInformation = 0x0400;
     public const uint ProcessQueryLimitedInformation = 0x1000;
     public const uint GrGdiObjects = 0;
@@ -68,6 +70,38 @@ internal static partial class NativeMethods
     }
 
     public delegate bool EnumWindowsProc(nint hwnd, nint lParam);
+
+    [InlineArray(260)]
+    public struct ExeName
+    {
+        private ushort _first;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public nuint DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+        public ExeName ExeFile;
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial nint CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32FirstW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool Process32First(nint snapshot, ref ProcessEntry32 entry);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32NextW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool Process32Next(nint snapshot, ref ProcessEntry32 entry);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

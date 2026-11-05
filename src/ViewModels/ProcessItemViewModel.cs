@@ -47,7 +47,9 @@ public sealed partial class ProcessItemViewModel : ObservableObject
     public IBrush Brush { get; }
 
     public bool IsGroup => _series.IsGroup;
-    public string PidText => IsGroup ? "All instances" : $"PID {Pid}";
+    public string GroupKey => _series.GroupKey;
+    public int RootPid => _series.RootPid;
+    public string PidText => IsGroup ? (Pid > 0 ? $"Combined · PID {Pid}" : "Combined") : $"PID {Pid}";
 
     /// <summary>The sample at the current cursor time, or null when the process was not running then.</summary>
     public ProcessSample? Sample { get; private set; }
@@ -105,7 +107,7 @@ public sealed partial class ProcessItemViewModel : ObservableObject
         Metrics = $"CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   Mem {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)}   Threads {s.Threads}";
         Activity = DescribeActivity(s);
         Details = string.Join('\n',
-            $"{(s.Instances > 1 ? $"{s.Instances} instances (combined)   ·   " : string.Empty)}CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   ·   Threads {s.Threads}   ·   Handles {s.Handles:N0}   ·   GDI {s.GdiObjects:N0}   ·   USER {s.UserObjects:N0}   ·   Priority {s.BasePriority}",
+            $"{(s.Instances > 1 ? $"{s.Instances} processes (combined)   ·   " : string.Empty)}CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   ·   Threads {s.Threads}   ·   Handles {s.Handles:N0}   ·   GDI {s.GdiObjects:N0}   ·   USER {s.UserObjects:N0}   ·   Priority {s.BasePriority}",
             $"Working set {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)} (peak {ValueFormatter.Format(ValueKind.Megabytes, s.PeakWorkingSetMb)})   ·   Private {ValueFormatter.Format(ValueKind.Megabytes, s.PrivateMb)}   ·   Page file {ValueFormatter.Format(ValueKind.Megabytes, s.PagefileMb)}   ·   Virtual {ValueFormatter.Format(ValueKind.Megabytes, s.VirtualMb)}",
             $"Disk read {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoReadBytesPerSec)}   ·   write {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoWriteBytesPerSec)}   ·   {ValueFormatter.Format(ValueKind.PerSecond, s.IoOpsPerSec)} ops   ·   Page faults {ValueFormatter.Format(ValueKind.PerSecond, s.PageFaultsPerSec)}",
             s.WindowTitle.Length > 0 ? $"{DescribeActivity(s)}   ·   “{s.WindowTitle}”" : DescribeActivity(s));

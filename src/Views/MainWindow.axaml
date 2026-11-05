@@ -160,7 +160,7 @@
                                     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Activity}" Classes="muted" FontSize="11" Margin="28,0,0,0" TextWrapping="Wrap" />
                                   </Grid>
                                 </Button>
-                                <CheckBox Content="Chart each instance separately" IsChecked="{Binding IsSplit}" IsVisible="{Binding ShowInstances}"
+                                <CheckBox Content="Chart each process separately" IsChecked="{Binding IsSplit}" IsVisible="{Binding ShowInstances}"
                                           FontSize="12" Margin="16,0,6,6" />
                                 <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding ShowInstances}" Margin="16,0,6,6">
                                   <ItemsControl.ItemTemplate>
@@ -222,32 +222,67 @@
                       HorizontalContentAlignment="Stretch">
                 <Button.Flyout>
                   <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="wide">
-                    <Grid RowDefinitions="Auto,Auto" Width="620">
-                      <Grid Grid.Row="0" ColumnDefinitions="*,96,64,84,140" Margin="8,0,24,4" IsVisible="{Binding HasProcesses}">
-                        <TextBlock Grid.Column="0" Text="PROCESS" Classes="section" Margin="0" />
-                        <TextBlock Grid.Column="1" Text="INSTANCE" Classes="section" Margin="0" TextAlignment="Right" />
-                        <TextBlock Grid.Column="2" Text="CPU" Classes="section" Margin="0" TextAlignment="Right" />
-                        <TextBlock Grid.Column="3" Text="MEMORY" Classes="section" Margin="0" TextAlignment="Right" />
-                        <TextBlock Grid.Column="4" Text="STATE" Classes="section" Margin="12,0,0,0" />
+                    <Grid RowDefinitions="Auto,Auto" Width="710">
+                      <Grid Grid.Row="0" ColumnDefinitions="26,*" Margin="0,0,20,4" IsVisible="{Binding HasProcesses}">
+                        <Grid Grid.Column="1" ColumnDefinitions="*,190,64,84,140" Margin="0,0,8,0">
+                          <TextBlock Grid.Column="0" Text="PROCESS" Classes="section" Margin="0" />
+                          <TextBlock Grid.Column="1" Text="PID" Classes="section" Margin="0" TextAlignment="Right" />
+                          <TextBlock Grid.Column="2" Text="CPU" Classes="section" Margin="0" TextAlignment="Right" />
+                          <TextBlock Grid.Column="3" Text="MEMORY" Classes="section" Margin="0" TextAlignment="Right" />
+                          <TextBlock Grid.Column="4" Text="STATE" Classes="section" Margin="12,0,0,0" />
+                        </Grid>
                       </Grid>
-                      <ListBox Grid.Row="1" Classes="tasks" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedProcess}"
-                               MaxHeight="320" Padding="0" Background="Transparent" IsVisible="{Binding HasProcesses}"
-                               ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="OnProcessPicked">
-                        <ListBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:ProcessItemViewModel">
-                            <Grid ColumnDefinitions="*,96,64,84,140" Margin="0,0,16,0">
-                              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                                <Ellipse Width="9" Height="9" Fill="{Binding Brush}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                              </StackPanel>
-                              <TextBlock Grid.Column="1" Text="{Binding PidText}" Classes="muted" TextAlignment="Right" />
-                              <TextBlock Grid.Column="2" Text="{Binding CpuText}" TextAlignment="Right" />
-                              <TextBlock Grid.Column="3" Text="{Binding MemoryText}" TextAlignment="Right" />
-                              <TextBlock Grid.Column="4" Text="{Binding State}" Classes="muted" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
-                            </Grid>
-                          </DataTemplate>
-                        </ListBox.ItemTemplate>
-                      </ListBox>
+                      <ScrollViewer Grid.Row="1" MaxHeight="360" IsVisible="{Binding HasProcesses}"
+                                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Groups}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProcessGroupViewModel">
+                              <Border Classes="proc" Classes.selected="{Binding IsSelected}" Margin="0,0,6,4">
+                                <StackPanel>
+                                  <Grid ColumnDefinitions="26,*">
+                                    <Button Grid.Column="0" Classes="icon" Content="{Binding PickerChevron}" Command="{Binding TogglePickerCommand}"
+                                            IsVisible="{Binding HasMany}" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="1" Classes="row" Command="{Binding Primary.SelectCommand}" Click="OnProcessPicked">
+                                      <Grid ColumnDefinitions="*,190,64,84,140" Margin="0,5,8,5">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                          <Ellipse Width="9" Height="9" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding Primary.PidText}" Classes="muted" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Primary.CpuText}" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Primary.MemoryText}" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="4" Text="{Binding Primary.State}" Classes="muted" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+                                      </Grid>
+                                    </Button>
+                                  </Grid>
+                                  <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding ShowPickerProcesses}" Margin="0,0,0,4">
+                                    <ItemsControl.ItemTemplate>
+                                      <DataTemplate x:DataType="vm:ProcessItemViewModel">
+                                        <Border Classes="instance" Classes.selected="{Binding IsSelected}" Margin="2,0,2,2">
+                                          <Grid ColumnDefinitions="24,*">
+                                            <Button Grid.Column="1" Classes="row" Command="{Binding SelectCommand}" Click="OnProcessPicked">
+                                              <Grid ColumnDefinitions="*,190,64,84,140" Margin="0,4,8,4">
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0">
+                                                  <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding PidText}" Classes="muted" TextAlignment="Right" />
+                                                <TextBlock Grid.Column="2" Text="{Binding CpuText}" TextAlignment="Right" />
+                                                <TextBlock Grid.Column="3" Text="{Binding MemoryText}" TextAlignment="Right" />
+                                                <TextBlock Grid.Column="4" Text="{Binding State}" Classes="muted" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+                                              </Grid>
+                                            </Button>
+                                          </Grid>
+                                        </Border>
+                                      </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                  </ItemsControl>
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
                       <TextBlock Grid.Row="1" Classes="muted" Margin="8" IsVisible="{Binding !HasProcesses}"
                                  Text="No matching processes in this time range." />
                     </Grid>

@@ -52,7 +52,9 @@ public sealed record ProcessSample(
     int WindowHeight,
     int BasePriority,
     string WindowTitle,
-    int Instances = 1) : ITimedSample
+    int Instances = 1,
+    int ParentPid = 0,
+    int RootPid = 0) : ITimedSample
 {
     public string Key => $"{Name}:{Pid}";
 

@@ -60,7 +60,8 @@ public static class RecordingLoader
         Enum.TryParse<WindowState>(r.Text("WindowState"), out var state) ? state : WindowState.None,
         r.Text("Responding") != "0",
         r.Integer("WinX"), r.Integer("WinY"), r.Integer("WinW"), r.Integer("WinH"),
-        r.Integer("BasePriority"), r.Text("WindowTitle"));
+        r.Integer("BasePriority"), r.Text("WindowTitle"),
+        ParentPid: r.Integer("ParentPid"), RootPid: r.Integer("RootPid"));
 
     private readonly struct Row(List<string> fields, Dictionary<string, int> index)
     {

@@ -20,6 +20,7 @@ public static class CsvFormat
         "Threads", "Handles", "WorkingSetMB", "PrivateMB", "PagefileMB", "VirtualMB", "PeakWorkingSetMB",
         "PageFaultsPerSec", "IoReadBps", "IoWriteBps", "IoOpsPerSec", "GdiObjects", "UserObjects",
         "Foreground", "WindowState", "Responding", "WinX", "WinY", "WinW", "WinH", "BasePriority", "WindowTitle", "HogBy",
+        "ParentPid", "RootPid",
     ];
 
     public static string Header => string.Join(',', Columns);
@@ -45,7 +46,8 @@ public static class CsvFormat
         p.Foreground ? "1" : "0", p.Window.ToString(), p.Responding ? "1" : "0",
         p.WindowX.ToString(CultureInfo.InvariantCulture), p.WindowY.ToString(CultureInfo.InvariantCulture),
         p.WindowWidth.ToString(CultureInfo.InvariantCulture), p.WindowHeight.ToString(CultureInfo.InvariantCulture),
-        p.BasePriority.ToString(CultureInfo.InvariantCulture), Escape(p.WindowTitle), hogBy);
+        p.BasePriority.ToString(CultureInfo.InvariantCulture), Escape(p.WindowTitle), hogBy,
+        p.ParentPid.ToString(CultureInfo.InvariantCulture), p.RootPid.ToString(CultureInfo.InvariantCulture));
 
     public static List<string> SplitLine(string line)
     {

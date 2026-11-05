@@ -20,7 +20,13 @@ public sealed partial class ProcessGroupViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(Chevron))]
     private bool _isExpanded;
 
-    /// <summary>Chart every instance on its own line instead of one combined line.</summary>
+    /// <summary>Expansion state in the Process detail picker, independent of the sidebar's.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPickerProcesses))]
+    [NotifyPropertyChangedFor(nameof(PickerChevron))]
+    private bool _isPickerExpanded;
+
+    /// <summary>Chart every process on its own line instead of one combined line.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Subtitle))]
     private bool _isSplit;
@@ -34,14 +40,25 @@ public sealed partial class ProcessGroupViewModel : ObservableObject
 
     public string Name { get; }
 
-    /// <summary>The combined view of every instance; only offered once there is more than one.</summary>
+    /// <summary>Identifies the application instance: name plus root PID.</summary>
+    public string Key => Aggregate.GroupKey;
+    public int RootPid => Aggregate.Pid;
+
+    /// <summary>The combined view of every process in the instance; only offered once there is more than one.</summary>
     public ProcessItemViewModel Aggregate { get; }
     public ObservableCollection<ProcessItemViewModel> Items { get; } = [];
 
     public bool HasMany => Items.Count > 1;
     public bool ShowInstances => IsExpanded && HasMany;
+    public bool ShowPickerProcesses => IsPickerExpanded && HasMany;
+    public string PickerChevron => IsPickerExpanded ? "▾" : "▸";
+
+    /// <summary>What picking this row selects: the combined view for several processes, else the only one.</summary>
+    public ProcessItemViewModel Primary => Items.Count > 1 ? Aggregate : Items.FirstOrDefault() ?? Aggregate;
     public string Chevron => IsExpanded ? "▾" : "▸";
-    public string Subtitle => Items.Count == 1 ? $"PID {Items[0].Pid}" : $"{Items.Count} instances · {(IsSplit ? "separate" : "combined")}";
+    public string Subtitle => Items.Count == 1
+        ? $"PID {Items[0].Pid}"
+        : $"{(Aggregate.Pid > 0 ? $"PID {Aggregate.Pid} · " : string.Empty)}{Items.Count} processes · {(IsSplit ? "separate" : "combined")}";
     public IBrush? Brush => HasMany ? Aggregate.Brush : Items.Count > 0 ? Items[0].Brush : null;
     public bool IsSelected => Aggregate.IsSelected || Items.Any(i => i.IsSelected);
 
@@ -96,8 +113,13 @@ public sealed partial class ProcessGroupViewModel : ObservableObject
 
         Aggregate.Update(time, gapSeconds);
         Metrics = Aggregate.Metrics;
-        Activity = Aggregate.Sample is { } sample ? $"{sample.Instances} of {Items.Count} running" : $"0 of {Items.Count} running";
+        var running = Aggregate.Sample?.Instances ?? 0;
+        var title = Aggregate.Sample?.WindowTitle ?? string.Empty;
+        Activity = title.Length == 0 ? $"{running} of {Items.Count} running" : $"{running} of {Items.Count} running  ·  “{title}”";
     }
+
+    [RelayCommand]
+    private void TogglePicker() => IsPickerExpanded = !IsPickerExpanded;
 
     [RelayCommand]
     private void Activate()
@@ -115,6 +137,8 @@ public sealed partial class ProcessGroupViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasMany));
         OnPropertyChanged(nameof(ShowInstances));
+        OnPropertyChanged(nameof(ShowPickerProcesses));
+        OnPropertyChanged(nameof(Primary));
         OnPropertyChanged(nameof(Subtitle));
         OnPropertyChanged(nameof(Brush));
         OnPropertyChanged(nameof(IsVisible));

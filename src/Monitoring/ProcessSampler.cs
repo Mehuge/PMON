@@ -19,6 +19,11 @@ internal sealed class ProcessSampler
 
     private readonly Dictionary<int, Previous> _previous = new();
 
+    /// <summary>Instance root for each live PID, fixed when first seen so charts do not re-split when a parent exits.</summary>
+    private readonly Dictionary<int, int> _roots = new();
+
+    private const int MaxAncestors = 64;
+
     /// <summary>Samples tracked processes in full and, when <paramref name="topCount"/> is positive, ranks the untracked ones.</summary>
     public (List<ProcessSample> Tracked, List<HogSample> Hogs) Sample(DateTime time, ProcessMatcher matcher, int topCount)
     {
@@ -30,6 +35,20 @@ internal sealed class ProcessSampler
         var seen = new HashSet<int>();
         var processes = Process.GetProcesses();
         var hogs = new List<HogSample>();
+        var parents = ReadParents();
+        var names = new Dictionary<int, string>();
+
+        foreach (var process in processes)
+        {
+            try
+            {
+                names[process.Id] = process.ProcessName;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
+            {
+                // Exited while listing; it cannot be a useful ancestor either.
+            }
+        }
 
         try
         {
@@ -45,7 +64,8 @@ internal sealed class ProcessSampler
                     if (matcher.IsMatch(name))
                     {
                         windows.TryGetValue(pid, out var windowHandle);
-                        tracked.Add(Read(process, time, stamp, foregroundPid, windowHandle));
+                        var root = ResolveRoot(pid, name, parents, names);
+                        tracked.Add(Read(process, time, stamp, foregroundPid, windowHandle, parents.GetValueOrDefault(pid), root));
                         seen.Add(pid);
                     }
                     else if (topCount > 0)
@@ -72,7 +92,84 @@ internal sealed class ProcessSampler
         foreach (var pid in _previous.Keys.Where(pid => !seen.Contains(pid)).ToList())
             _previous.Remove(pid);
 
+        foreach (var pid in _roots.Keys.Where(pid => !names.ContainsKey(pid)).ToList())
+            _roots.Remove(pid);
+
         return (tracked, hogs);
+    }
+
+    /// <summary>Finds the topmost same-named ancestor, looking through differently named intermediates; a process with none is its own root.</summary>
+    private int ResolveRoot(int pid, string name, Dictionary<int, int> parents, Dictionary<int, string> names)
+    {
+        if (_roots.TryGetValue(pid, out var known))
+            return known;
+
+        // Provisional entry stops a malformed parent cycle from recursing forever.
+        _roots[pid] = pid;
+        var root = pid;
+        var child = pid;
+
+        for (var depth = 0; depth < MaxAncestors; depth++)
+        {
+            if (!parents.TryGetValue(child, out var parent) || parent == child || !names.TryGetValue(parent, out var parentName) || !IsOlder(parent, child))
+                break;
+
+            if (parentName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                root = ResolveRoot(parent, name, parents, names);
+                break;
+            }
+
+            child = parent;
+        }
+
+        _roots[pid] = root;
+        return root;
+    }
+
+    /// <summary>Guards against PID reuse: a real parent started no later than its child. Unreadable times are trusted.</summary>
+    private static bool IsOlder(int parent, int child)
+    {
+        var parentStart = CreationTicks(parent);
+        var childStart = CreationTicks(child);
+        return parentStart == 0 || childStart == 0 || parentStart <= childStart;
+    }
+
+    private static ulong CreationTicks(int pid)
+    {
+        var handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, pid);
+        if (handle == 0)
+            return 0;
+
+        try
+        {
+            return NativeMethods.GetProcessTimes(handle, out var created, out _, out _, out _) ? created.Value : 0;
+        }
+        finally
+        {
+            NativeMethods.CloseHandle(handle);
+        }
+    }
+
+    private static Dictionary<int, int> ReadParents()
+    {
+        var parents = new Dictionary<int, int>();
+        var snapshot = NativeMethods.CreateToolhelp32Snapshot(NativeMethods.Th32csSnapProcess, 0);
+        if (snapshot is 0 or -1)
+            return parents;
+
+        try
+        {
+            var entry = new NativeMethods.ProcessEntry32 { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.ProcessEntry32>() };
+            for (var found = NativeMethods.Process32First(snapshot, ref entry); found; found = NativeMethods.Process32Next(snapshot, ref entry))
+                parents[(int)entry.ProcessId] = (int)entry.ParentProcessId;
+        }
+        finally
+        {
+            NativeMethods.CloseHandle(snapshot);
+        }
+
+        return parents;
     }
 
     private Rates MeasureLight(int pid, long stamp)
@@ -180,7 +277,7 @@ internal sealed class ProcessSampler
         return rates;
     }
 
-    private ProcessSample Read(Process process, DateTime time, long stamp, int foregroundPid, nint windowHandle)
+    private ProcessSample Read(Process process, DateTime time, long stamp, int foregroundPid, nint windowHandle, int parentPid, int rootPid)
     {
         var pid = process.Id;
         ulong cpuTicks = 0, readBytes = 0, writeBytes = 0, operations = 0;
@@ -243,7 +340,9 @@ internal sealed class ProcessSampler
             window is null ? 0 : window.Value.Bounds.Right - window.Value.Bounds.Left,
             window is null ? 0 : window.Value.Bounds.Bottom - window.Value.Bounds.Top,
             process.BasePriority,
-            window?.Title ?? string.Empty);
+            window?.Title ?? string.Empty,
+            ParentPid: parentPid,
+            RootPid: rootPid);
     }
 
     private static double Delta(ulong current, ulong previous) => current >= previous ? current - previous : 0;

@@ -146,9 +146,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public RulesViewModel Rules { get; }
     public ObservableCollection<ProcessGroupViewModel> Groups { get; } = [];
 
-    /// <summary>Every instance, ordered by name then PID, for the detail-tab picker.</summary>
-    public ObservableCollection<ProcessItemViewModel> Choices { get; } = [];
-
     public IReadOnlyList<ChartViewModel> OverviewCharts { get; }
     public IReadOnlyList<ChartViewModel> CpuCharts { get; }
     public IReadOnlyList<ChartViewModel> MemoryCharts { get; }
@@ -406,7 +403,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _items.Clear();
         Groups.Clear();
-        Choices.Clear();
         OnPropertyChanged(nameof(HasProcesses));
         OnPropertyChanged(nameof(ProcessesLabel));
         Viewport.Show(store, live);
@@ -495,24 +491,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void SelectProcess(ProcessItemViewModel item) => SelectedProcess = item;
 
-    private static int CompareItems(ProcessItemViewModel a, ProcessItemViewModel b)
-    {
-        var byName = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
-        return byName != 0 ? byName : a.Pid.CompareTo(b.Pid);
-    }
-
     private void AddToGroup(ProcessItemViewModel item)
     {
-        InsertChoice(item);
-
         var index = 0;
         while (index < Groups.Count)
         {
-            var comparison = StringComparer.OrdinalIgnoreCase.Compare(Groups[index].Name, item.Name);
+            var comparison = CompareGroup(Groups[index], item);
             if (comparison == 0)
             {
                 Groups[index].Add(item);
-                SyncAggregateChoice(Groups[index]);
                 return;
             }
 
@@ -522,7 +509,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             index++;
         }
 
-        var aggregate = new ProcessItemViewModel(Viewport.Store.GroupSeries(item.Name), Viewport, SelectProcess);
+        var aggregate = new ProcessItemViewModel(Viewport.Store.GroupSeries(item.Name, item.RootPid), Viewport, SelectProcess);
         var group = new ProcessGroupViewModel(item.Name, aggregate)
         {
             IsSplit = _settings.SplitProcesses.Contains(item.Name, StringComparer.OrdinalIgnoreCase),
@@ -532,38 +519,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Groups.Insert(index, group);
     }
 
-    private void InsertChoice(ProcessItemViewModel item)
+    private static int CompareGroup(ProcessGroupViewModel group, ProcessItemViewModel item)
     {
-        var choice = 0;
-        while (choice < Choices.Count && CompareItems(Choices[choice], item) < 0)
-            choice++;
-
-        Choices.Insert(choice, item);
-    }
-
-    /// <summary>Offers the combined view in the detail picker only while the group has several instances.</summary>
-    private void SyncAggregateChoice(ProcessGroupViewModel group)
-    {
-        var listed = Choices.Contains(group.Aggregate);
-        if (group.HasMany == listed)
-            return;
-
-        if (group.HasMany)
-            InsertChoice(group.Aggregate);
-        else
-            Choices.Remove(group.Aggregate);
+        var byName = StringComparer.OrdinalIgnoreCase.Compare(group.Name, item.Name);
+        return byName != 0 ? byName : group.RootPid.CompareTo(item.RootPid);
     }
 
     private void RemoveFromGroup(ProcessItemViewModel item)
     {
-        Choices.Remove(item);
-
         var group = Groups.FirstOrDefault(g => g.Items.Contains(item));
         if (group is null)
             return;
 
         group.Remove(item);
-        SyncAggregateChoice(group);
         if (group.Items.Count > 0)
             return;
 

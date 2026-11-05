@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using PMON.ViewModels;
 
 namespace PMON.Views;
@@ -41,7 +42,9 @@ public partial class MainWindow : Window
         await viewModel.LoadRecordingAsync(path);
     }
 
-    private void OnProcessPicked(object? sender, SelectionChangedEventArgs e) => ProcessPicker.Flyout?.Hide();
+    // Button runs its Command after Click; hiding the flyout synchronously would detach the row first.
+    private void OnProcessPicked(object? sender, RoutedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => ProcessPicker.Flyout?.Hide());
 
     private void OnEditRules(object? sender, RoutedEventArgs e)
     {
