@@ -217,6 +217,22 @@
                     <TextBlock Grid.Column="0" Text="Per category" VerticalAlignment="Center" Classes="muted" />
                     <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:MainViewModel.TopCountOptions}" SelectedItem="{Binding SelectedTopCount}" MinWidth="110" />
                   </Grid>
+                  <TextBlock Text="DATA LIMITS" Classes="section" Margin="0,14,0,0" />
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="Keep in memory" VerticalAlignment="Center" Classes="muted"
+                               ToolTip.Tip="Live samples older than this are discarded. Recordings are not affected." />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:MainViewModel.RetentionOptions}" SelectedItem="{Binding SelectedRetention}" MinWidth="110" />
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="New recording file at" VerticalAlignment="Center" Classes="muted"
+                               ToolTip.Tip="Recording moves to a new file once the current one reaches this size." />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:MainViewModel.TraceSizeOptions}" SelectedItem="{Binding SelectedTraceSize}" MinWidth="110" />
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="Keep newest recordings" VerticalAlignment="Center" Classes="muted"
+                               ToolTip.Tip="Older pmon-*.csv files in the recording folder are deleted beyond this many, including the one being written." />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:MainViewModel.KeepTraceOptions}" SelectedItem="{Binding SelectedKeepTraces}" MinWidth="110" />
+                  </Grid>
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

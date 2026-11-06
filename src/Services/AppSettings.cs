@@ -23,6 +23,15 @@ public sealed class AppSettings
 
     public int TopCount { get; set; } = 3;
 
+    /// <summary>Hours of live samples kept in memory; 0 keeps everything.</summary>
+    public double MemoryRetentionHours { get; set; } = 6;
+
+    /// <summary>Size in MB at which recording moves to a new file; 0 never splits.</summary>
+    public int TraceSizeMb { get; set; } = 250;
+
+    /// <summary>Number of recording files kept; older ones are deleted. 0 keeps all.</summary>
+    public int KeepTraces { get; set; }
+
     /// <summary>Process names whose instances are all unticked; names are stored because PIDs change between runs.</summary>
     public List<string> HiddenProcesses { get; set; } = [];
 

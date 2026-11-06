@@ -15,13 +15,35 @@ namespace PMON.ViewModels;
 
 public sealed record IntervalOption(string Label, double Seconds);
 
+/// <summary>A limit choice; a value of 0 means unlimited.</summary>
+public sealed record LimitOption(string Label, double Value)
+{
+    public override string ToString() => Label;
+}
+
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
-    private static readonly TimeSpan LiveRetention = TimeSpan.FromHours(6);
+    private static readonly TimeSpan TrimSlack = TimeSpan.FromMinutes(1);
     private const int ProcessTabIndex = 1;
     private static readonly TimeSpan MinimumRateWindow = TimeSpan.FromSeconds(30);
 
     public static readonly IReadOnlyList<int> TopCountOptions = [1, 3, 5, 10];
+
+    public static readonly IReadOnlyList<LimitOption> RetentionOptions =
+    [
+        new("30 minutes", 0.5), new("1 hour", 1), new("2 hours", 2), new("6 hours", 6),
+        new("12 hours", 12), new("24 hours", 24), new("Unlimited", 0),
+    ];
+
+    public static readonly IReadOnlyList<LimitOption> TraceSizeOptions =
+    [
+        new("50 MB", 50), new("100 MB", 100), new("250 MB", 250), new("500 MB", 500), new("1 GB", 1024), new("Unlimited", 0),
+    ];
+
+    public static readonly IReadOnlyList<LimitOption> KeepTraceOptions =
+    [
+        new("2 files", 2), new("5 files", 5), new("10 files", 10), new("20 files", 20), new("All", 0),
+    ];
 
     public static readonly IReadOnlyList<IntervalOption> IntervalOptions =
     [
@@ -33,7 +55,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly SampleStore _liveStore = new();
     private readonly Dictionary<string, ProcessItemViewModel> _items = new();
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private CsvRecorder? _recorder;
+    private RollingRecorder? _recorder;
     private SampleStore? _loadedStore;
     private bool _dirty = true;
     private bool _settingsDirty;
@@ -42,6 +64,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private IntervalOption _selectedInterval;
+
+    [ObservableProperty]
+    private LimitOption _selectedRetention;
+
+    [ObservableProperty]
+    private LimitOption _selectedTraceSize;
+
+    [ObservableProperty]
+    private LimitOption _selectedKeepTraces;
 
     [ObservableProperty]
     private SpanOption _selectedSpan;
@@ -122,6 +153,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Viewport = new Viewport(_liveStore);
 
         _selectedInterval = IntervalOptions.FirstOrDefault(o => o.Seconds == settings.IntervalSeconds) ?? IntervalOptions[1];
+        _selectedRetention = PickLimit(RetentionOptions, settings.MemoryRetentionHours, 6);
+        _selectedTraceSize = PickLimit(TraceSizeOptions, settings.TraceSizeMb, 250);
+        _selectedKeepTraces = PickLimit(KeepTraceOptions, settings.KeepTraces, 0);
         _selectedSpan = Viewport.SpanOptions.FirstOrDefault(o => o.Span.TotalSeconds == settings.SpanSeconds) ?? Viewport.SpanOptions[4];
         _recordingFolder = settings.RecordingFolder;
         _autoRecord = settings.AutoRecord;
@@ -383,15 +417,42 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _settings.Save();
     }
 
+    private static LimitOption PickLimit(IReadOnlyList<LimitOption> options, double value, double fallback) =>
+        options.FirstOrDefault(o => o.Value == value) ?? options.First(o => o.Value == fallback);
+
+    partial void OnSelectedRetentionChanged(LimitOption value)
+    {
+        _settings.MemoryRetentionHours = value.Value;
+        SaveSettings();
+    }
+
+    partial void OnSelectedTraceSizeChanged(LimitOption value)
+    {
+        _settings.TraceSizeMb = (int)value.Value;
+        ApplyRecordingLimits();
+        SaveSettings();
+    }
+
+    partial void OnSelectedKeepTracesChanged(LimitOption value)
+    {
+        _settings.KeepTraces = (int)value.Value;
+        ApplyRecordingLimits();
+        SaveSettings();
+    }
+
+    private long TraceSizeBytes => (long)(SelectedTraceSize.Value * 1048576);
+
+    private void ApplyRecordingLimits() =>
+        Volatile.Read(ref _recorder)?.SetLimits(TraceSizeBytes, (int)SelectedKeepTraces.Value);
+
     private void StartRecording()
     {
         try
         {
-            var path = Path.Combine(RecordingFolder, $"pmon-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
-            Volatile.Write(ref _recorder, new CsvRecorder(path));
+            var recorder = new RollingRecorder(RecordingFolder, TraceSizeBytes, (int)SelectedKeepTraces.Value);
+            Volatile.Write(ref _recorder, recorder);
             IsRecording = true;
-            RecordingStatus = $"Recording to {Path.GetFileName(path)}";
-            UpdateRecordingStats(_recorder!);
+            UpdateRecordingStats(recorder);
             Message = string.Empty;
             SaveSettings();
         }
@@ -421,11 +482,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void OnSnapshotOnUi(Snapshot snapshot)
     {
         _liveStore.Add(snapshot);
-        if (_liveStore.Start < snapshot.Time - LiveRetention - TimeSpan.FromMinutes(1))
-            _liveStore.TrimBefore(snapshot.Time - LiveRetention);
+        TrimLiveStore(snapshot.Time);
 
         if (ReferenceEquals(Viewport.Store, _liveStore))
             Viewport.DataAppended();
+    }
+
+    private void TrimLiveStore(DateTime now)
+    {
+        if (SelectedRetention.Value <= 0)
+            return;
+
+        var keep = TimeSpan.FromHours(SelectedRetention.Value);
+        if (_liveStore.Start >= now - keep - TrimSlack)
+            return;
+
+        _liveStore.TrimBefore(now - keep);
     }
 
     private void ShowStore(SampleStore store, bool live)
@@ -476,15 +548,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateRecordingStats(recorder);
     }
 
-    private void UpdateRecordingStats(CsvRecorder recorder)
+    private void UpdateRecordingStats(RollingRecorder recorder)
     {
         var elapsed = DateTime.Now - recorder.Started;
-        var sizeMb = (File.Exists(recorder.Path) ? new FileInfo(recorder.Path).Length : 0) / 1048576.0;
+        var sizeMb = recorder.Size / 1048576.0;
 
+        // Pruning bounds disk use, so a growth-rate projection would mislead.
+        var bounded = SelectedKeepTraces.Value > 0 && SelectedTraceSize.Value > 0;
+        var rate = elapsed < MinimumRateWindow || bounded ? 0 : sizeMb / elapsed.TotalSeconds;
+
+        RecordingStatus = $"Recording to {Path.GetFileName(recorder.Path)}";
         RecordingElapsed = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
         RecordingRows = recorder.Rows.ToString("N0");
         RecordingSize = ValueFormatter.Format(ValueKind.Megabytes, sizeMb);
-        FreeSpaceText = DescribeFreeSpace(elapsed < MinimumRateWindow ? 0 : sizeMb / elapsed.TotalSeconds);
+        FreeSpaceText = DescribeFreeSpace(rate);
     }
 
     private string DescribeFreeSpace(double megabytesPerSecond)
