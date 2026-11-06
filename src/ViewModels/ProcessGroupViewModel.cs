@@ -53,7 +53,7 @@ public sealed partial class ProcessGroupViewModel : ObservableObject
     public bool ShowPickerProcesses => IsPickerExpanded && HasMany;
     public string PickerChevron => IsPickerExpanded ? "▾" : "▸";
 
-    /// <summary>What picking this row selects: the combined view for several processes, else the only one.</summary>
+    /// <summary>What picking this row selects: the combined view for several processes, otherwise the only one.</summary>
     public ProcessItemViewModel Primary => Items.Count > 1 ? Aggregate : Items.FirstOrDefault() ?? Aggregate;
     public string Chevron => IsExpanded ? "▾" : "▸";
     public string Subtitle => Items.Count == 1

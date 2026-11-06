@@ -33,10 +33,18 @@ public static class RecordingLoader
 
             var scope = row.Text("Scope");
             if (scope.Equals(CsvFormat.SystemScope, StringComparison.OrdinalIgnoreCase))
+            {
                 store.AddSystem(ReadSystem(row, time));
-            else if (scope.Equals(CsvFormat.ProcessScope, StringComparison.OrdinalIgnoreCase))
+                continue;
+            }
+
+            if (scope.Equals(CsvFormat.ProcessScope, StringComparison.OrdinalIgnoreCase))
+            {
                 store.AddProcess(ReadProcess(row, time));
-            else if (scope.Equals(CsvFormat.HogScope, StringComparison.OrdinalIgnoreCase))
+                continue;
+            }
+
+            if (scope.Equals(CsvFormat.HogScope, StringComparison.OrdinalIgnoreCase))
                 store.AddHog(row.Text("HogBy"), ReadProcess(row, time));
         }
 

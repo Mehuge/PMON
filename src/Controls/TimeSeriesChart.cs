@@ -247,18 +247,13 @@ public sealed class TimeSeriesChart : ViewportControl
                 runs.Add(run);
             }
 
-            if (minIndex == maxIndex)
-                run.Add(new Point(XOf(minIndex), YOf(minValue)));
-            else if (minIndex < maxIndex)
-            {
-                run.Add(new Point(XOf(minIndex), YOf(minValue)));
-                run.Add(new Point(XOf(maxIndex), YOf(maxValue)));
-            }
-            else
-            {
-                run.Add(new Point(XOf(maxIndex), YOf(maxValue)));
-                run.Add(new Point(XOf(minIndex), YOf(minValue)));
-            }
+            var (firstIndex, firstValue, lastIndex, lastValue) = minIndex <= maxIndex
+                ? (minIndex, minValue, maxIndex, maxValue)
+                : (maxIndex, maxValue, minIndex, minValue);
+
+            run.Add(new Point(XOf(firstIndex), YOf(firstValue)));
+            if (lastIndex != firstIndex)
+                run.Add(new Point(XOf(lastIndex), YOf(lastValue)));
 
             previousTime = points.TimeAt(j - 1);
             i = j;

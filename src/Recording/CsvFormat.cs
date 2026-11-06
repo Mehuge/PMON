@@ -58,30 +58,39 @@ public static class CsvFormat
         for (var i = 0; i < line.Length; i++)
         {
             var c = line[i];
+            if (quoted && c != '"')
+            {
+                current.Append(c);
+                continue;
+            }
+
+            if (quoted && i + 1 < line.Length && line[i + 1] == '"')
+            {
+                current.Append('"');
+                i++;
+                continue;
+            }
+
             if (quoted)
             {
-                if (c != '"')
-                    current.Append(c);
-                else if (i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    current.Append('"');
-                    i++;
-                }
-                else
-                    quoted = false;
-
+                quoted = false;
                 continue;
             }
 
             if (c == '"')
+            {
                 quoted = true;
-            else if (c == ',')
+                continue;
+            }
+
+            if (c == ',')
             {
                 fields.Add(current.ToString());
                 current.Clear();
+                continue;
             }
-            else
-                current.Append(c);
+
+            current.Append(c);
         }
 
         fields.Add(current.ToString());

@@ -80,10 +80,13 @@ public sealed partial class Viewport : ObservableObject
         CursorTime = null;
 
         if (store.IsEmpty)
+        {
             ViewEnd = DateTime.Now;
-        else
-            ViewEnd = live ? store.End : Min(store.Start + Span, store.End);
+            Invalidate();
+            return;
+        }
 
+        ViewEnd = live ? store.End : Min(store.Start + Span, store.End);
         Invalidate();
     }
 

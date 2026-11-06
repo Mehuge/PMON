@@ -224,9 +224,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ToggleRecording()
     {
         if (IsRecording)
+        {
             StopRecording();
-        else
-            StartRecording();
+            return;
+        }
+
+        StartRecording();
     }
 
     [RelayCommand]
@@ -448,18 +451,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SaveSettings();
         }
 
-        if (_recorder is { } recorder)
-        {
-            if (recorder.Error is { } error)
-            {
-                StopRecording();
-                Message = $"Recording stopped: {error.Message}";
-            }
-            else
-            {
-                UpdateRecordingStats(recorder);
-            }
-        }
+        RefreshRecording();
 
         if (!_dirty)
             return;
@@ -467,6 +459,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dirty = false;
         SyncProcessList();
         UpdateReadouts();
+    }
+
+    private void RefreshRecording()
+    {
+        if (_recorder is not { } recorder)
+            return;
+
+        if (recorder.Error is { } error)
+        {
+            StopRecording();
+            Message = $"Recording stopped: {error.Message}";
+            return;
+        }
+
+        UpdateRecordingStats(recorder);
     }
 
     private void UpdateRecordingStats(CsvRecorder recorder)

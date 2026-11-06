@@ -15,9 +15,12 @@ public static class TimeSearch
         {
             var mid = (low + high) >>> 1;
             if (list[mid].Time < time)
+            {
                 low = mid + 1;
-            else
-                high = mid;
+                continue;
+            }
+
+            high = mid;
         }
 
         return low;
@@ -31,9 +34,12 @@ public static class TimeSearch
         {
             var mid = (low + high) >>> 1;
             if (list[mid].Time <= time)
+            {
                 low = mid + 1;
-            else
-                high = mid;
+                continue;
+            }
+
+            high = mid;
         }
 
         return low - 1;

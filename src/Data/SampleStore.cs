@@ -124,14 +124,21 @@ public sealed class SampleStore
     private void AddToGroup(ProcessSeries member, ProcessSample sample)
     {
         var group = GroupSeries(member.Name, member.RootPid);
-        var samples = group.Samples;
-        if (samples.Count > 0 && samples[^1].Time == sample.Time)
-            samples[^1] = samples[^1].Plus(sample);
-        else
-            samples.Add(sample with { Pid = 0 });
+        AppendOrMerge(group.Samples, sample);
 
-        if (samples[^1].WindowTitle.Length > 0)
-            group.Title = samples[^1].WindowTitle;
+        if (group.Samples[^1].WindowTitle.Length > 0)
+            group.Title = group.Samples[^1].WindowTitle;
+    }
+
+    private static void AppendOrMerge(List<ProcessSample> samples, ProcessSample sample)
+    {
+        if (samples.Count > 0 && samples[^1].Time == sample.Time)
+        {
+            samples[^1] = samples[^1].Plus(sample);
+            return;
+        }
+
+        samples.Add(sample with { Pid = 0 });
     }
 
     /// <summary>Records a top-consumer sample for a process that is not matched by any tracked pattern.</summary>

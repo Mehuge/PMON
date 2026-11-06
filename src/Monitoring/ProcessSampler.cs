@@ -72,8 +72,10 @@ internal sealed class ProcessSampler
                         var root = ResolveRoot(pid, name, parents, names);
                         tracked.Add(Read(process, time, stamp, foregroundPid, windowHandle, parents.GetValueOrDefault(pid), root));
                         seen.Add(pid);
+                        continue;
                     }
-                    else if (topCount > 0)
+
+                    if (topCount > 0)
                     {
                         candidates.Add(new Candidate(process, name, MeasureLight(pid, stamp)));
                         seen.Add(pid);
@@ -403,7 +405,7 @@ internal sealed class ProcessSampler
         return (int)pid;
     }
 
-    /// <summary>Picks one representative top-level window per process: the foreground one, else titled and largest.</summary>
+    /// <summary>Picks one representative top-level window per process: the foreground one, otherwise titled and largest.</summary>
     private static Dictionary<int, nint> EnumerateWindows()
     {
         var best = new Dictionary<int, (nint Handle, long Score)>();
