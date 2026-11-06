@@ -18,6 +18,10 @@ internal sealed class ProcessSampler
     private readonly record struct Candidate(Process Process, string Name, Rates Rates);
 
     private readonly Dictionary<int, Previous> _previous = new();
+    private Dictionary<int, KernelCounters>? _kernel;
+
+    /// <summary>Kernel process list for this cycle, read only when a process handle could not be opened.</summary>
+    private Dictionary<int, KernelCounters> KernelSnapshot => _kernel ??= KernelCounterReader.Read();
 
     /// <summary>Instance root for each live PID, fixed when first seen so charts do not re-split when a parent exits.</summary>
     private readonly Dictionary<int, int> _roots = new();
@@ -29,6 +33,7 @@ internal sealed class ProcessSampler
     {
         var tracked = new List<ProcessSample>();
         var candidates = new List<Candidate>();
+        _kernel = null;
         var stamp = Stopwatch.GetTimestamp();
         var foregroundPid = GetForegroundPid();
         var windows = EnumerateWindows();
@@ -175,19 +180,24 @@ internal sealed class ProcessSampler
     private Rates MeasureLight(int pid, long stamp)
     {
         ulong cpuTicks = 0, readBytes = 0, writeBytes = 0, operations = 0;
+        bool timesKnown = false, ioKnown = false;
         var handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, pid);
         if (handle != 0)
         {
             try
             {
                 if (NativeMethods.GetProcessTimes(handle, out _, out _, out var kernel, out var userTime))
+                {
                     cpuTicks = kernel.Value + userTime.Value;
+                    timesKnown = true;
+                }
 
                 if (NativeMethods.GetProcessIoCounters(handle, out var io))
                 {
                     readBytes = io.ReadBytes;
                     writeBytes = io.WriteBytes;
                     operations = io.ReadOperations + io.WriteOperations;
+                    ioKnown = true;
                 }
             }
             finally
@@ -196,7 +206,28 @@ internal sealed class ProcessSampler
             }
         }
 
+        BackfillFromKernel(pid, timesKnown, ioKnown, ref cpuTicks, ref readBytes, ref writeBytes, ref operations);
         return UpdateRates(pid, cpuTicks, readBytes, writeBytes, operations, 0, stamp);
+    }
+
+    /// <summary>Protected processes refuse handle access; their CPU and I/O counters are still in the kernel process list.</summary>
+    private void BackfillFromKernel(int pid, bool timesKnown, bool ioKnown, ref ulong cpuTicks, ref ulong readBytes, ref ulong writeBytes, ref ulong operations)
+    {
+        if (timesKnown && ioKnown)
+            return;
+
+        if (!KernelSnapshot.TryGetValue(pid, out var counters))
+            return;
+
+        if (!timesKnown)
+            cpuTicks = counters.CpuTicks;
+
+        if (ioKnown)
+            return;
+
+        readBytes = counters.ReadBytes;
+        writeBytes = counters.WriteBytes;
+        operations = counters.Operations;
     }
 
     private static void RankHogs(List<Candidate> candidates, int count, DateTime time, int foregroundPid, List<HogSample> output)
@@ -283,6 +314,7 @@ internal sealed class ProcessSampler
         ulong cpuTicks = 0, readBytes = 0, writeBytes = 0, operations = 0;
         uint pageFaults = 0;
         int gdi = 0, user = 0;
+        bool timesKnown = false, ioKnown = false;
 
         var handle = Open(pid);
         if (handle != 0)
@@ -290,13 +322,17 @@ internal sealed class ProcessSampler
             try
             {
                 if (NativeMethods.GetProcessTimes(handle, out _, out _, out var kernel, out var userTime))
+                {
                     cpuTicks = kernel.Value + userTime.Value;
+                    timesKnown = true;
+                }
 
                 if (NativeMethods.GetProcessIoCounters(handle, out var io))
                 {
                     readBytes = io.ReadBytes;
                     writeBytes = io.WriteBytes;
                     operations = io.ReadOperations + io.WriteOperations;
+                    ioKnown = true;
                 }
 
                 if (NativeMethods.GetProcessMemoryInfo(handle, out var counters, CountersSize))
@@ -310,6 +346,10 @@ internal sealed class ProcessSampler
                 NativeMethods.CloseHandle(handle);
             }
         }
+
+        BackfillFromKernel(pid, timesKnown, ioKnown, ref cpuTicks, ref readBytes, ref writeBytes, ref operations);
+        if (handle == 0 && KernelSnapshot.TryGetValue(pid, out var kernelCounters))
+            pageFaults = kernelCounters.PageFaults;
 
         var rates = UpdateRates(pid, cpuTicks, readBytes, writeBytes, operations, pageFaults, stamp);
         var window = windowHandle == 0 ? null : DescribeWindow(windowHandle);

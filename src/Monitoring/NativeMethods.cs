@@ -95,6 +95,9 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", SetLastError = true)]
     public static partial nint CreateToolhelp32Snapshot(uint flags, uint pid);
 
+    [LibraryImport("ntdll.dll")]
+    public static partial int NtQuerySystemInformation(int infoClass, nint buffer, uint length, out uint returnLength);
+
     [LibraryImport("kernel32.dll", EntryPoint = "Process32FirstW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool Process32First(nint snapshot, ref ProcessEntry32 entry);
