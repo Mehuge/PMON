@@ -113,10 +113,13 @@
                       <ItemsControl ItemsSource="{Binding Rows}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ConsumerRow">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Height="18">
-                              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="SemiBold" />
-                            </Grid>
+                            <Button Classes="row" Command="{Binding ActivateCommand}" IsEnabled="{Binding HasProcess}"
+                                    ToolTip.Tip="{Binding Tooltip}" ToolTip.ShowDelay="300">
+                              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Height="18">
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="SemiBold" />
+                              </Grid>
+                            </Button>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
@@ -419,7 +422,7 @@
                       <TextBlock Text="{Binding SelectedProcess.Name}" FontSize="18" FontWeight="Bold" />
                       <TextBlock Text="{Binding SelectedProcess.PidText}" Classes="muted" VerticalAlignment="Bottom" Margin="0,0,0,2" />
                     </StackPanel>
-                    <TextBlock Text="{Binding SelectedProcess.Details}" FontSize="12" LineHeight="20" MinHeight="80" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SelectedProcess.Details}" FontSize="12" LineHeight="20" Height="160" TextWrapping="Wrap" />
                   </StackPanel>
                 </Border>
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasSelection}">

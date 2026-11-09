@@ -135,11 +135,17 @@ public sealed class StateTimelineChart : ViewportControl
         DrawCursor(context, viewport, rows, area, start, end);
     }
 
-    private List<ProcessSeries> VisibleSeries(Viewport viewport) =>
-        viewport.Store.Series.Concat(viewport.Store.Groups)
+    private List<ProcessSeries> VisibleSeries(Viewport viewport)
+    {
+        var store = viewport.Store;
+        IEnumerable<ProcessSeries> candidates = SelectedOnly
+            ? store.FindSubject(viewport.SelectedKey) is { } subject ? [subject] : []
+            : store.Series.Concat(store.Groups).Where(s => s.Visible && !s.Collapsed);
+
+        return candidates
             .Where(s => s.Samples.Count > 0 && s.Samples[0].Time <= viewport.ViewEnd && s.Samples[^1].Time >= viewport.ViewStart)
-            .Where(s => SelectedOnly ? s.Key == viewport.SelectedKey : s.Visible && !s.Collapsed)
             .ToList();
+    }
 
     private static void DrawLegend(DrawingContext context)
     {

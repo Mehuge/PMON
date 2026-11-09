@@ -12,9 +12,24 @@ public sealed class MonitorService : IDisposable
     private ProcessMatcher _matcher = ProcessMatcher.None;
     private TimeSpan _interval = TimeSpan.FromSeconds(1);
     private int _topCount;
+    private int _pinnedPid;
     private Thread? _thread;
 
     public event Action<Snapshot>? SnapshotReady;
+
+    /// <summary>Samples one extra process outside the tracking rules in full; 0 clears it.</summary>
+    public void Pin(int pid)
+    {
+        lock (_gate)
+        {
+            if (_pinnedPid == pid)
+                return;
+
+            _pinnedPid = pid;
+        }
+
+        _wake.Set();
+    }
 
     public void Configure(IEnumerable<TrackingRule> rules, TimeSpan interval, int topCount)
     {
@@ -57,8 +72,8 @@ public sealed class MonitorService : IDisposable
         var token = _stop.Token;
 
         // First pass only primes the delta-based counters.
-        var (matcher, topCount) = GetProcessSettings();
-        processes.Sample(DateTime.Now, matcher, topCount);
+        var (matcher, topCount, pinned) = GetProcessSettings();
+        processes.Sample(DateTime.Now, matcher, topCount, pinned);
         system.Sample(DateTime.Now);
         WaitHandle.WaitAny([token.WaitHandle], TimeSpan.FromMilliseconds(500));
 
@@ -66,8 +81,8 @@ public sealed class MonitorService : IDisposable
         {
             var started = Stopwatch.GetTimestamp();
             var time = DateTime.Now;
-            (matcher, topCount) = GetProcessSettings();
-            var (tracked, hogs) = processes.Sample(time, matcher, topCount);
+            (matcher, topCount, pinned) = GetProcessSettings();
+            var (tracked, hogs) = processes.Sample(time, matcher, topCount, pinned);
             var snapshot = new Snapshot(time, system.Sample(time), tracked, hogs);
             SnapshotReady?.Invoke(snapshot);
 
@@ -79,10 +94,10 @@ public sealed class MonitorService : IDisposable
         }
     }
 
-    private (ProcessMatcher Matcher, int TopCount) GetProcessSettings()
+    private (ProcessMatcher Matcher, int TopCount, int PinnedPid) GetProcessSettings()
     {
         lock (_gate)
-            return (_matcher, _topCount);
+            return (_matcher, _topCount, _pinnedPid);
     }
 
     private TimeSpan GetInterval()

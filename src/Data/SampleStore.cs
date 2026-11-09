@@ -60,6 +60,8 @@ public sealed class SampleStore
     private readonly Dictionary<string, ProcessSeries> _byKey = new();
     private readonly Dictionary<string, ProcessSeries> _hogByKey = new();
     private readonly Dictionary<string, ProcessSeries> _groupByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ProcessSeries> _untrackedByKey = new();
+    private readonly List<ProcessSeries> _untracked = [];
 
     public List<SystemSample> System { get; } = [];
     public List<ProcessSeries> Series { get; } = [];
@@ -153,8 +155,37 @@ public sealed class SampleStore
         }
 
         series.Samples.Add(sample);
+        AddUntracked(sample);
         Extend(sample.Time);
     }
+
+    // One process can rank under several resources at the same moment; keep a single sample per time.
+    private void AddUntracked(ProcessSample sample)
+    {
+        var key = sample.Key;
+        if (!_untrackedByKey.TryGetValue(key, out var series))
+        {
+            series = new ProcessSeries(key, sample.Name, sample.Pid, Palette[_untracked.Count % Palette.Length]);
+            _untrackedByKey[key] = series;
+            _untracked.Add(series);
+        }
+
+        if (series.Samples.Count == 0 || series.Samples[^1].Time < sample.Time)
+            series.Samples.Add(sample);
+    }
+
+    /// <summary>The series for a tracked process, a combined group, or an untracked top consumer.</summary>
+    public ProcessSeries? FindSubject(string? key)
+    {
+        if (key is null)
+            return null;
+
+        return Series.Concat(Groups).FirstOrDefault(p => p.Key == key)
+            ?? (_untrackedByKey.TryGetValue(key, out var untracked) ? untracked : null);
+    }
+
+    /// <summary>Samples of a process that was only recorded while among the top consumers, or null if there are none.</summary>
+    public ProcessSeries? FindUntracked(string key) => _untrackedByKey.GetValueOrDefault(key);
 
     /// <summary>Drops everything older than <paramref name="cutoff"/> to bound live memory use.</summary>
     public void TrimBefore(DateTime cutoff)
@@ -166,6 +197,7 @@ public sealed class SampleStore
         Trim(Series, _byKey, cutoff);
         Trim(Groups, _groupByKey, cutoff);
         Trim(HogSeries, _hogByKey, cutoff);
+        Trim(_untracked, _untrackedByKey, cutoff);
 
         Start = System.Count > 0 ? System[0].Time : cutoff;
     }

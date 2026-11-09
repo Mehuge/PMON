@@ -46,6 +46,9 @@ public sealed partial class ProcessItemViewModel : ObservableObject
     public int Pid => _series.Pid;
     public IBrush Brush { get; }
 
+    /// <summary>True for a process outside the tracking rules, known only from the moments it was a top consumer.</summary>
+    public bool IsUntracked { get; init; }
+
     public bool IsGroup => _series.IsGroup;
     public string GroupKey => _series.GroupKey;
     public int RootPid => _series.RootPid;
@@ -95,7 +98,9 @@ public sealed partial class ProcessItemViewModel : ObservableObject
             State = "Not running";
             Metrics = "—";
             Activity = "not running at this time";
-            Details = "Not running at this time";
+            Details = IsUntracked
+                ? "Not tracked: sampled continuously only while selected here.\nNo data at this time."
+                : "Not running at this time";
             return;
         }
 
@@ -106,11 +111,14 @@ public sealed partial class ProcessItemViewModel : ObservableObject
         State = DescribeState(s);
         Metrics = $"CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   Mem {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)}   Threads {s.Threads}";
         Activity = DescribeActivity(s);
-        Details = string.Join('\n',
+        Details = string.Join('\n', new[]
+        {
+            IsUntracked ? "Not tracked: sampled continuously only while selected here; earlier history has gaps." : null,
             $"{(s.Instances > 1 ? $"{s.Instances} processes (combined)   ·   " : string.Empty)}CPU {ValueFormatter.Format(ValueKind.Percent, s.CpuPercent)}   ·   Threads {s.Threads}   ·   Handles {s.Handles:N0}   ·   GDI {s.GdiObjects:N0}   ·   USER {s.UserObjects:N0}   ·   Priority {s.BasePriority}",
             $"Working set {ValueFormatter.Format(ValueKind.Megabytes, s.WorkingSetMb)} (peak {ValueFormatter.Format(ValueKind.Megabytes, s.PeakWorkingSetMb)})   ·   Private {ValueFormatter.Format(ValueKind.Megabytes, s.PrivateMb)}   ·   Page file {ValueFormatter.Format(ValueKind.Megabytes, s.PagefileMb)}   ·   Virtual {ValueFormatter.Format(ValueKind.Megabytes, s.VirtualMb)}",
             $"Disk read {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoReadBytesPerSec)}   ·   write {ValueFormatter.Format(ValueKind.BytesPerSecond, s.IoWriteBytesPerSec)}   ·   {ValueFormatter.Format(ValueKind.PerSecond, s.IoOpsPerSec)} ops   ·   Page faults {ValueFormatter.Format(ValueKind.PerSecond, s.PageFaultsPerSec)}",
-            s.WindowTitle.Length > 0 ? $"{DescribeActivity(s)}   ·   “{s.WindowTitle}”" : DescribeActivity(s));
+            s.WindowTitle.Length > 0 ? $"{DescribeActivity(s)}   ·   “{s.WindowTitle}”" : DescribeActivity(s),
+        }.OfType<string>());
     }
 
     private static string DescribeState(ProcessSample s)

@@ -181,6 +181,10 @@
     <Style Selector="Button.row:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="#1B2635" />
     </Style>
+    <Style Selector="Button.row:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
 
     <Style Selector="Border.chip">
       <Setter Property="Background" Value="#1A2431" />

@@ -87,7 +87,7 @@ public sealed class TimeSeriesChart : ViewportControl
         foreach (var spec in model.SystemSeries)
             Add(result, spec.Name, spec.Color, new PointSource<SystemSample>(store.System, spec.Selector), start, end);
 
-        if (model.ProcessMetrics.Count > 0 && store.Series.Concat(store.Groups).FirstOrDefault(p => p.Key == selectedKey) is { } subject)
+        if (model.ProcessMetrics.Count > 0 && store.FindSubject(selectedKey) is { } subject)
         {
             foreach (var metric in model.ProcessMetrics)
                 Add(result, metric.Name, metric.Color, new PointSource<ProcessSample>(subject.Samples, metric.Selector), start, end);

@@ -100,6 +100,9 @@ public static class HogReason
     public const string Cpu = "Cpu";
     public const string Memory = "Memory";
     public const string Disk = "Disk";
+
+    /// <summary>An untracked process the user is inspecting; sampled in full every cycle.</summary>
+    public const string Pinned = "Pinned";
 }
 
 /// <summary>A process that was among the top consumers of one resource while not being tracked by a pattern.</summary>

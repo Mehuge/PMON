@@ -29,7 +29,7 @@ internal sealed class ProcessSampler
     private const int MaxAncestors = 64;
 
     /// <summary>Samples tracked processes in full and, when <paramref name="topCount"/> is positive, ranks the untracked ones.</summary>
-    public (List<ProcessSample> Tracked, List<HogSample> Hogs) Sample(DateTime time, ProcessMatcher matcher, int topCount)
+    public (List<ProcessSample> Tracked, List<HogSample> Hogs) Sample(DateTime time, ProcessMatcher matcher, int topCount, int pinnedPid = 0)
     {
         var tracked = new List<ProcessSample>();
         var candidates = new List<Candidate>();
@@ -71,6 +71,15 @@ internal sealed class ProcessSampler
                         windows.TryGetValue(pid, out var windowHandle);
                         var root = ResolveRoot(pid, name, parents, names);
                         tracked.Add(Read(process, time, stamp, foregroundPid, windowHandle, parents.GetValueOrDefault(pid), root));
+                        seen.Add(pid);
+                        continue;
+                    }
+
+                    if (pid == pinnedPid)
+                    {
+                        windows.TryGetValue(pid, out var pinnedWindow);
+                        var pinnedRoot = ResolveRoot(pid, name, parents, names);
+                        hogs.Add(new HogSample(HogReason.Pinned, Read(process, time, stamp, foregroundPid, pinnedWindow, parents.GetValueOrDefault(pid), pinnedRoot)));
                         seen.Add(pid);
                         continue;
                     }

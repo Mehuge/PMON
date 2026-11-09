@@ -54,6 +54,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly MonitorService _monitor = new();
     private readonly SampleStore _liveStore = new();
     private readonly Dictionary<string, ProcessItemViewModel> _items = new();
+    private ProcessItemViewModel? _untrackedItem;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private RollingRecorder? _recorder;
     private SampleStore? _loadedStore;
@@ -165,6 +166,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Viewport.Span = _selectedSpan.Span;
         _freeSpaceText = DescribeFreeSpace(0);
 
+        Consumers =
+        [
+            new("CPU", ValueKind.Percent, p => p.CpuPercent, OpenConsumer),
+            new("Memory", ValueKind.Megabytes, p => p.WorkingSetMb, OpenConsumer),
+            new("Disk", ValueKind.BytesPerSecond, p => p.IoReadBytesPerSec + p.IoWriteBytesPerSec, OpenConsumer),
+        ];
+
         Rules = new RulesViewModel(settings.Rules);
         Rules.Changed += OnRulesChanged;
 
@@ -205,12 +213,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public IReadOnlyList<ChartViewModel> DetailCharts { get; }
     public IReadOnlyList<ChartViewModel> TopCharts { get; }
 
-    public IReadOnlyList<ConsumerListViewModel> Consumers { get; } =
-    [
-        new("CPU", ValueKind.Percent, p => p.CpuPercent),
-        new("Memory", ValueKind.Megabytes, p => p.WorkingSetMb),
-        new("Disk", ValueKind.BytesPerSecond, p => p.IoReadBytesPerSec + p.IoWriteBytesPerSec),
-    ];
+    public IReadOnlyList<ConsumerListViewModel> Consumers { get; }
 
     public bool HasSelection => SelectedProcess is not null;
 
@@ -336,6 +339,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedProcessChanged(ProcessItemViewModel? value)
     {
+        _monitor.Pin(value is { IsUntracked: true } ? value.Pid : 0);
+
+        if (!ReferenceEquals(value, _untrackedItem))
+            _untrackedItem = null;
+
         Viewport.SelectedKey = value?.Key;
         if (value is null)
             return;
@@ -502,6 +510,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void ShowStore(SampleStore store, bool live)
     {
+        if (_untrackedItem is not null)
+            SelectedProcess = null;
+
         _items.Clear();
         Groups.Clear();
         OnPropertyChanged(nameof(HasProcesses));
@@ -640,6 +651,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void SelectProcess(ProcessItemViewModel item) => SelectedProcess = item;
 
+    private void OpenConsumer(ProcessSample sample)
+    {
+        var item = _items.GetValueOrDefault(sample.Key) ?? CreateUntrackedItem(sample.Key);
+        if (item is null)
+            return;
+
+        Message = string.Empty;
+        SelectedProcess = item;
+        SelectedTab = ProcessTabIndex;
+    }
+
+    // Untracked processes get a transient item that is never added to the process list.
+    private ProcessItemViewModel? CreateUntrackedItem(string key)
+    {
+        if (_untrackedItem?.Key == key)
+            return _untrackedItem;
+
+        var series = Viewport.Store.FindUntracked(key);
+        if (series is null)
+            return null;
+
+        var item = new ProcessItemViewModel(series, Viewport, SelectProcess) { IsUntracked = true };
+        item.Update(Viewport.CursorTime ?? Viewport.ViewEnd, Viewport.GapSeconds);
+        _untrackedItem = item;
+        return item;
+    }
+
     private void AddToGroup(ProcessItemViewModel item)
     {
         var index = 0;
@@ -761,6 +799,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         foreach (var group in Groups)
             group.Update(time, gap);
+
+        _untrackedItem?.Update(time, gap);
 
         UpdateConsumers(time, gap);
 
