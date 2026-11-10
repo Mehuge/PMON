@@ -15,7 +15,11 @@ internal sealed class ProcessSampler
 
     private readonly record struct Rates(double Cpu, double ReadBytes, double WriteBytes, double Operations, double Faults);
 
-    private readonly record struct Candidate(Process Process, string Name, Rates Rates);
+    // Full is set for tracked processes, which are already read in full and must not have their rates measured twice.
+    private readonly record struct Candidate(Process Process, string Name, Rates Rates, ProcessSample? Full = null)
+    {
+        public double WorkingSetBytes => Full is { } full ? full.WorkingSetMb * BytesPerMb : Process.WorkingSet64;
+    }
 
     private readonly Dictionary<int, Previous> _previous = new();
     private Dictionary<int, KernelCounters>? _kernel;
@@ -28,7 +32,7 @@ internal sealed class ProcessSampler
 
     private const int MaxAncestors = 64;
 
-    /// <summary>Samples tracked processes in full and, when <paramref name="topCount"/> is positive, ranks the untracked ones.</summary>
+    /// <summary>Samples tracked processes in full and, when <paramref name="topCount"/> is positive, ranks all processes, tracked or not.</summary>
     public (List<ProcessSample> Tracked, List<HogSample> Hogs) Sample(DateTime time, ProcessMatcher matcher, int topCount, int pinnedPid = 0)
     {
         var tracked = new List<ProcessSample>();
@@ -70,7 +74,14 @@ internal sealed class ProcessSampler
                     {
                         windows.TryGetValue(pid, out var windowHandle);
                         var root = ResolveRoot(pid, name, parents, names);
-                        tracked.Add(Read(process, time, stamp, foregroundPid, windowHandle, parents.GetValueOrDefault(pid), root));
+                        var sample = Read(process, time, stamp, foregroundPid, windowHandle, parents.GetValueOrDefault(pid), root);
+                        tracked.Add(sample);
+                        if (topCount > 0)
+                        {
+                            var rates = new Rates(sample.CpuPercent, sample.IoReadBytesPerSec, sample.IoWriteBytesPerSec, sample.IoOpsPerSec, sample.PageFaultsPerSec);
+                            candidates.Add(new Candidate(process, name, rates, sample));
+                        }
+
                         seen.Add(pid);
                         continue;
                     }
@@ -259,7 +270,7 @@ internal sealed class ProcessSampler
         }
 
         Take(HogReason.Cpu, candidates.Where(c => c.Rates.Cpu > 0).OrderByDescending(c => c.Rates.Cpu));
-        Take(HogReason.Memory, candidates.OrderByDescending(c => c.Process.WorkingSet64));
+        Take(HogReason.Memory, candidates.OrderByDescending(c => c.WorkingSetBytes));
         Take(HogReason.Disk, candidates
             .Where(c => c.Rates.ReadBytes + c.Rates.WriteBytes > 0)
             .OrderByDescending(c => c.Rates.ReadBytes + c.Rates.WriteBytes));
@@ -267,6 +278,9 @@ internal sealed class ProcessSampler
 
     private static ProcessSample ToHogSample(Candidate candidate, DateTime time, int foregroundPid)
     {
+        if (candidate.Full is { } full)
+            return full;
+
         var process = candidate.Process;
         return new ProcessSample(
             time,

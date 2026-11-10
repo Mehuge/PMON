@@ -887,19 +887,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private ChartViewModel[] BuildTopCharts() =>
     [
-        new("Top CPU users", "Busiest processes that are not tracked, % of all cores", ValueKind.Percent, Viewport)
+        new("Top CPU users", "Busiest processes, tracked or not, % of all cores", ValueKind.Percent, Viewport)
         {
             MinimumScale = 5,
             HogReason = HogReason.Cpu,
             ProcessSelector = p => p.CpuPercent,
         },
-        new("Top memory users", "Largest working sets among processes that are not tracked", ValueKind.Megabytes, Viewport)
+        new("Top memory users", "Largest working sets among all processes", ValueKind.Megabytes, Viewport)
         {
             MinimumScale = 64,
             HogReason = HogReason.Memory,
             ProcessSelector = p => p.WorkingSetMb,
         },
-        new("Top disk users", "Read + write throughput of processes that are not tracked", ValueKind.BytesPerSecond, Viewport)
+        new("Top disk users", "Read + write throughput of all processes", ValueKind.BytesPerSecond, Viewport)
         {
             MinimumScale = 1024,
             HogReason = HogReason.Disk,
